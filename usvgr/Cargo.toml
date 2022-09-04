@@ -10,7 +10,7 @@ categories = ["multimedia::images"]
 repository = "https://github.com/RazrFalcon/svgr"
 documentation = "https://docs.rs/usvgr/"
 readme = "README.md"
-exclude = ["testing-tools/**"]
+exclude = ["testing-tools/**", "tests/**"]
 workspace = ".."
 
 [dependencies]
