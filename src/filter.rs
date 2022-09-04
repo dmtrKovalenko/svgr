@@ -904,7 +904,7 @@ fn apply_image(
                 aspect: fe.aspect,
             };
 
-            crate::image::draw_kind(kind, view_box, fe.rendering_mode, &mut canvas);
+            crate::image::raster_images::draw_raster(kind, view_box, fe.rendering_mode, &mut canvas);
         }
         usvg::filter::ImageKind::Use(ref id) => {
             if let Some(ref node) = tree.defs_by_id(id).or_else(|| tree.node_by_id(id)) {

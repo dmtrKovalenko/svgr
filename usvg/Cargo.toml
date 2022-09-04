@@ -13,10 +13,6 @@ readme = "README.md"
 exclude = ["testing-tools/**"]
 workspace = ".."
 
-[[bin]]
-name = "usvg"
-required-features = ["filter", "text", "system-fonts", "memmap-fonts", "export"]
-
 [dependencies]
 base64 = "0.13" # for embedded images
 data-url = "0.1" # for href parsing
@@ -63,3 +59,4 @@ memmap-fonts = ["fontdb/memmap"]
 # enables SVG generation using Tree::to_string
 # adds around 50KiB to your binary
 export = ["xmlwriter"]
+

@@ -2,7 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::{ImageHrefResolver, ImageRendering, ShapeRendering, TextRendering, Size, ScreenSize};
+use std::{collections::HashMap, sync::Arc};
+
+use crate::{ImageRendering, PreloadedImageData, ScreenSize, ShapeRendering, Size, TextRendering};
 
 /// Image fit options.
 ///
@@ -27,9 +29,7 @@ impl FitTo {
         let sizef = size.to_size();
 
         match *self {
-            FitTo::Original => {
-                Some(size)
-            }
+            FitTo::Original => Some(size),
             FitTo::Width(w) => {
                 let h = (w as f64 * sizef.height() / sizef.width()).ceil();
                 ScreenSize::new(w, h as u32)
@@ -38,17 +38,16 @@ impl FitTo {
                 let w = (h as f64 * sizef.width() / sizef.height()).ceil();
                 ScreenSize::new(w as u32, h)
             }
-            FitTo::Size(w, h) => {
-                Some(sizef.scale_to(Size::new(w as f64, h as f64)?).to_screen_size())
-            }
-            FitTo::Zoom(z) => {
-                Size::new(sizef.width() * z as f64, sizef.height() * z as f64)
-                    .map(|s| s.to_screen_size())
-            }
+            FitTo::Size(w, h) => Some(
+                sizef
+                    .scale_to(Size::new(w as f64, h as f64)?)
+                    .to_screen_size(),
+            ),
+            FitTo::Zoom(z) => Size::new(sizef.width() * z as f64, sizef.height() * z as f64)
+                .map(|s| s.to_screen_size()),
         }
     }
 }
-
 
 /// Processing options.
 #[derive(Debug)]
@@ -135,7 +134,7 @@ pub struct Options {
     /// Specifies the way `xlink:href` in `<image>` elements should be handled.
     ///
     /// Default: see type's documentation for details
-    pub image_href_resolver: ImageHrefResolver,
+    pub image_data: HashMap<String, Arc<PreloadedImageData>>,
 }
 
 impl Default for Options {
@@ -154,7 +153,7 @@ impl Default for Options {
             default_size: Size::new(100.0, 100.0).unwrap(),
             #[cfg(feature = "text")]
             fontdb: fontdb::Database::new(),
-            image_href_resolver: ImageHrefResolver::default(),
+            image_data: HashMap::new(),
         }
     }
 }
@@ -176,7 +175,7 @@ impl Options {
             default_size: self.default_size,
             #[cfg(feature = "text")]
             fontdb: &self.fontdb,
-            image_href_resolver: &self.image_href_resolver,
+            image_data: &self.image_data,
         }
     }
 }
@@ -199,7 +198,7 @@ pub struct OptionsRef<'a> {
     pub default_size: Size,
     #[cfg(feature = "text")]
     pub fontdb: &'a fontdb::Database,
-    pub image_href_resolver: &'a ImageHrefResolver,
+    pub image_data: &'a HashMap<String, Arc<PreloadedImageData>>,
 }
 
 impl OptionsRef<'_> {

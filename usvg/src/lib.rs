@@ -109,7 +109,6 @@ pub mod utils;
 mod clippath;
 mod converter;
 mod error;
-#[cfg(feature = "export")] mod export;
 #[cfg(feature = "filter")] pub mod filter;
 mod geom;
 mod image;
@@ -126,7 +125,6 @@ mod switch;
 mod units;
 mod use_node;
 
-pub use image::ImageHrefResolver;
 pub use svgtypes::{Align, AspectRatio};
 pub use strict_num::{NormalizedF64, NonZeroPositiveF64, PositiveF64, ApproxEq, ApproxEqUlps};
 
@@ -666,14 +664,7 @@ impl Tree {
 
         None
     }
-
-    /// Converts an SVG.
-    #[inline]
-    #[cfg(feature = "export")]
-    pub fn to_string(&self, opt: &XmlOptions) -> String {
-        crate::export::convert(self, opt)
-    }
-
+    
     /// Set a view box for the tree.
     pub(crate) fn set_view_box(&mut self, rect: Rect) {
         if let NodeKind::Svg(svg) = &mut *self.root.borrow_mut() {

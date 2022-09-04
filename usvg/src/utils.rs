@@ -108,7 +108,3 @@ pub fn aligned_pos(
         Align::XMaxYMax => (x + w,       y + h      ),
     }
 }
-
-pub(crate) fn file_extension(path: &std::path::Path) -> Option<&str> {
-    path.extension().and_then(|e| e.to_str())
-}

@@ -3,7 +3,7 @@
     <title>`image` is not a valid child</title>
 
     <clipPath id="clip1">
-        <image id="image1" x="8" y="8" width="64" height="64" xlink:href="../images/image.jpg"/>
+        <image id="image1" x="8" y="8" width="64" height="64" xlink:href="image.jpg"/>
     </clipPath>
     <rect id="rect2" x="0" y="0" width="200" height="200" fill="red" clip-path="url(#clip1)"/>
 

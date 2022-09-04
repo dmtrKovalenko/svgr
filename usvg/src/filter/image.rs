@@ -2,9 +2,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::svgtree::{self, AId};
-use crate::{AspectRatio, ImageRendering, converter};
+use std::sync::Arc;
+
 use super::Kind;
+use crate::svgtree::{self, AId};
+use crate::{converter, image, AspectRatio, ImageRendering};
 
 /// An image filter primitive.
 ///
@@ -27,7 +29,7 @@ pub struct Image {
 #[derive(Clone, Debug)]
 pub enum ImageKind {
     /// An image data.
-    Image(crate::ImageKind),
+    Image(Arc<image::PreloadedImageData>),
 
     /// A reference to an SVG object.
     ///

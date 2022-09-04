@@ -1,7 +1,21 @@
+use std::sync::Arc;
+
 use once_cell::sync::Lazy;
 use rgb::FromSlice;
+use usvg::PreloadedImageData;
 
 const IMAGE_SIZE: u32 = 300;
+
+fn load_image(path: &str) -> Arc<PreloadedImageData> {
+    let image_data = std::fs::read(path).unwrap();
+    let png_image = image::load_from_memory(image_data.as_slice()).unwrap();
+
+    PreloadedImageData::new(
+        png_image.width(),
+        png_image.height(),
+        png_image.to_rgba8().into_raw(),
+    )
+}
 
 static GLOBAL_OPT: Lazy<std::sync::Mutex<usvg::Options>> = Lazy::new(|| {
     let mut opt = usvg::Options::default();
@@ -13,6 +27,14 @@ static GLOBAL_OPT: Lazy<std::sync::Mutex<usvg::Options>> = Lazy::new(|| {
     opt.fontdb.set_fantasy_family("Sedgwick Ave Display");
     opt.fontdb.set_monospace_family("Noto Mono");
     opt.resources_dir = Some(std::path::PathBuf::from("tests/svg"));
+
+    opt.image_data
+        .insert("image.png".to_owned(), load_image("tests/images/image.png"));
+    opt.image_data
+        .insert("image.jpg".to_owned(), load_image("tests/images/image.jpg"));
+    opt.image_data
+        .insert("image-63x61.png".to_owned(), load_image("tests/images/image-63x61.png"));
+
     std::sync::Mutex::new(opt)
 });
 
@@ -28,9 +50,17 @@ pub fn render(name: &str) -> usize {
     };
 
     let fit_to = usvg::FitTo::Width(IMAGE_SIZE);
-    let size = fit_to.fit_to(tree.svg_node().size.to_screen_size()).unwrap();
+    let size = fit_to
+        .fit_to(tree.svg_node().size.to_screen_size())
+        .unwrap();
     let mut pixmap = tiny_skia::Pixmap::new(size.width(), size.height()).unwrap();
-    resvg::render(&tree, fit_to, tiny_skia::Transform::default(), pixmap.as_mut()).unwrap();
+    resvg::render(
+        &tree,
+        fit_to,
+        tiny_skia::Transform::default(),
+        pixmap.as_mut(),
+    )
+    .unwrap();
 
     // pixmap.save_png(&format!("tests/{}.png", name)).unwrap();
 
@@ -41,7 +71,12 @@ pub fn render(name: &str) -> usize {
     assert_eq!(expected_data.len(), rgba.len());
 
     let mut pixels_d = 0;
-    for (a, b) in expected_data.as_slice().as_rgba().iter().zip(rgba.as_rgba()) {
+    for (a, b) in expected_data
+        .as_slice()
+        .as_rgba()
+        .iter()
+        .zip(rgba.as_rgba())
+    {
         if is_pix_diff(*a, *b) {
             pixels_d += 1;
         }
@@ -67,9 +102,7 @@ fn load_png(path: &str) -> Vec<u8> {
         png::ColorType::Rgb => {
             panic!("RGB PNG is not supported.");
         }
-        png::ColorType::Rgba => {
-            img_data
-        }
+        png::ColorType::Rgba => img_data,
         png::ColorType::Grayscale => {
             let mut rgba_data = Vec::with_capacity(img_data.len() * 4);
             for gray in img_data {
@@ -102,10 +135,10 @@ fn load_png(path: &str) -> Vec<u8> {
 
 // TODO: remove
 fn is_pix_diff(c1: rgb::RGBA8, c2: rgb::RGBA8) -> bool {
-    (c1.r as i32 - c2.r as i32).abs() > 1 ||
-        (c1.g as i32 - c2.g as i32).abs() > 1 ||
-        (c1.b as i32 - c2.b as i32).abs() > 1 ||
-        (c1.a as i32 - c2.a as i32).abs() > 1
+    (c1.r as i32 - c2.r as i32).abs() > 1
+        || (c1.g as i32 - c2.g as i32).abs() > 1
+        || (c1.b as i32 - c2.b as i32).abs() > 1
+        || (c1.a as i32 - c2.a as i32).abs() > 1
 }
 
 #[allow(dead_code)]
