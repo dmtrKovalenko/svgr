@@ -20,11 +20,13 @@ pub struct PreloadedImageData {
     pub width: u32,
     /// The height of image in pixels
     pub height: u32,
+    /// The image mime type (png/jpg)
+    pub mime: String,
 }
 
 impl PreloadedImageData {
     /// Creates a new `PreloadedImageData` from the given rgba8 buffer and blends all the semi transparent colors.
-    pub fn new(width: u32, height: u32, rgba_data: Vec<u8>) -> Arc<Self> {
+    pub fn new(mime: String, width: u32, height: u32, rgba_data: Vec<u8>) -> Arc<Self> {
         let mut data = vec![0; rgba_data.len()];
 
         for i in (0..rgba_data.len()).step_by(4) {
@@ -44,6 +46,7 @@ impl PreloadedImageData {
         Arc::new(Self {
             data,
             width,
+            mime,
             height,
         })
     }

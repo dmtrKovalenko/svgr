@@ -13,7 +13,6 @@ pub fn draw(image: &usvgr::Image, canvas: &mut Canvas) -> usvgr::PathBbox {
     image.view_box.rect.to_path_bbox()
 }
 
-#[cfg(feature = "raster-images")]
 pub mod raster_images {
     use crate::render::Canvas;
     use std::sync::Arc;
