@@ -1,6 +1,3 @@
-use std::sync::Arc;
-
-use image;
 use usvgr::PreloadedImageData;
 
 fn main() {
@@ -12,6 +9,7 @@ fn main() {
     opt.image_data.insert(
         "ferris_image".to_string(),
         PreloadedImageData::new(
+            "png".to_string(),
             ferris_image.width(),
             ferris_image.height(),
             ferris_image.to_rgba8().into_raw(),

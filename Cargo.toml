@@ -17,17 +17,21 @@ name = "svgr"
 required-features = ["filter", "text", "system-fonts", "memmap-fonts"]
 
 [dependencies]
+gif = { version = "0.11", optional = true }
+jpeg-decoder = { version = "0.2", default-features = false, features = ["platform_independent"], optional = true }
 log = "0.4"
 pico-args =  { version = "0.5", features = ["eq-separator"] }
+png = { version = "0.17", optional = true }
 rgb = "0.8"
 svgfilters = { path = "svgfilters", version = "0.4", optional = true }
 svgtypes = "0.8"
-tiny-skia = "0.8.1"
+tiny-skia = "0.6"
 usvgr = { path = "usvgr", version = "0.23.0", default-features = false }
 
 [dev-dependencies]
 once_cell = "1.5"
 image = "0.24.3"
+png = "0.17.5"
 
 [features]
 default = ["filter", "text", "system-fonts", "memmap-fonts"]

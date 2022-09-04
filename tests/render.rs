@@ -11,6 +11,7 @@ fn load_image(path: &str) -> Arc<PreloadedImageData> {
     let png_image = image::load_from_memory(image_data.as_slice()).unwrap();
 
     PreloadedImageData::new(
+        "png".to_owned(),
         png_image.width(),
         png_image.height(),
         png_image.to_rgba8().into_raw(),
@@ -32,8 +33,10 @@ static GLOBAL_OPT: Lazy<std::sync::Mutex<usvgr::Options>> = Lazy::new(|| {
         .insert("image.png".to_owned(), load_image("tests/images/image.png"));
     opt.image_data
         .insert("image.jpg".to_owned(), load_image("tests/images/image.jpg"));
-    opt.image_data
-        .insert("image-63x61.png".to_owned(), load_image("tests/images/image-63x61.png"));
+    opt.image_data.insert(
+        "image-63x61.png".to_owned(),
+        load_image("tests/images/image-63x61.png"),
+    );
 
     std::sync::Mutex::new(opt)
 });
