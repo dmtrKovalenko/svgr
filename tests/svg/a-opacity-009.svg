@@ -1,8 +1,8 @@
 <svg id="svg1" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
     <title>On an invalid element</title>
     <desc>
-        resvg specific test, because `opacity` will be groupped
-        by the `usvg` preprocessor, but it should not be done for all elements,
+        svgr specific test, because `opacity` will be groupped
+        by the `usvgr` preprocessor, but it should not be done for all elements,
         only for SVG graphic one.
         Otherwise we will end up with:
         <!--

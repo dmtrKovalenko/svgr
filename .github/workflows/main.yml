@@ -24,15 +24,15 @@ jobs:
       working-directory: c-api
       run: cargo build --no-default-features
 
-    - name: Test usvg
-      working-directory: usvg
+    - name: Test usvgr
+      working-directory: usvgr
       run: cargo test
 
-    - name: Build resvg without default support
+    - name: Build svgr without default support
       run: cargo check --no-default-features
 
-    - name: Build usvg without default support
-      working-directory: usvg
+    - name: Build usvgr without default support
+      working-directory: usvgr
       run: cargo check --no-default-features
 
   msrv:

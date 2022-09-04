@@ -459,7 +459,7 @@ fn conv_element(
         }
         NodeKind::Group(ref g) => {
             if is_clip_path {
-                // ClipPath with a Group element is an `usvg` special case.
+                // ClipPath with a Group element is an `usvgr` special case.
                 // Group will contains a single Path element and we should set
                 // `clip-path` on it.
 

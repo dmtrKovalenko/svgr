@@ -2,15 +2,15 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use usvg::{NodeExt, TransformFromBBox};
+use usvgr::{NodeExt, TransformFromBBox};
 
 use crate::{ConvTransform, OptionLog, render::Canvas};
 
 pub fn clip(
-    tree: &usvg::Tree,
-    node: &usvg::Node,
-    cp: &usvg::ClipPath,
-    bbox: usvg::PathBbox,
+    tree: &usvgr::Tree,
+    node: &usvgr::Node,
+    cp: &usvgr::ClipPath,
+    bbox: usvgr::PathBbox,
     canvas: &mut Canvas,
 ) -> Option<()> {
     let mut clip_pixmap = tiny_skia::Pixmap::new(canvas.pixmap.width(), canvas.pixmap.height())?;
@@ -20,11 +20,11 @@ pub fn clip(
     clip_canvas.transform = canvas.transform;
     clip_canvas.apply_transform(cp.transform.to_native());
 
-    if cp.units == usvg::Units::ObjectBoundingBox {
+    if cp.units == usvgr::Units::ObjectBoundingBox {
         let bbox = bbox.to_rect()
             .log_none(|| log::warn!("Clipping of zero-sized shapes is not allowed."))?;
 
-        clip_canvas.apply_transform(usvg::Transform::from_bbox(bbox).to_native());
+        clip_canvas.apply_transform(usvgr::Transform::from_bbox(bbox).to_native());
     }
 
     let ts = clip_canvas.transform;
@@ -32,7 +32,7 @@ pub fn clip(
         clip_canvas.apply_transform(node.transform().to_native());
 
         match *node.borrow() {
-            usvg::NodeKind::Path(ref path_node) => {
+            usvgr::NodeKind::Path(ref path_node) => {
                 crate::path::draw(
                     tree,
                     path_node,
@@ -40,7 +40,7 @@ pub fn clip(
                     &mut clip_canvas,
                 );
             }
-            usvg::NodeKind::Group(ref g) => {
+            usvgr::NodeKind::Group(ref g) => {
                 clip_group(tree, &node, g, bbox, &mut clip_canvas);
             }
             _ => {}
@@ -51,7 +51,7 @@ pub fn clip(
 
     if let Some(ref id) = cp.clip_path {
         if let Some(ref clip_node) = tree.defs_by_id(id) {
-            if let usvg::NodeKind::ClipPath(ref cp) = *clip_node.borrow() {
+            if let usvgr::NodeKind::ClipPath(ref cp) = *clip_node.borrow() {
                 clip(tree, clip_node, cp, bbox, canvas);
             }
         }
@@ -66,15 +66,15 @@ pub fn clip(
 }
 
 fn clip_group(
-    tree: &usvg::Tree,
-    node: &usvg::Node,
-    g: &usvg::Group,
-    bbox: usvg::PathBbox,
+    tree: &usvgr::Tree,
+    node: &usvgr::Node,
+    g: &usvgr::Group,
+    bbox: usvgr::PathBbox,
     canvas: &mut Canvas,
 ) -> Option<()> {
     if let Some(ref id) = g.clip_path {
         if let Some(ref clip_node) = tree.defs_by_id(id) {
-            if let usvg::NodeKind::ClipPath(ref cp) = *clip_node.borrow() {
+            if let usvgr::NodeKind::ClipPath(ref cp) = *clip_node.borrow() {
                 // If a `clipPath` child also has a `clip-path`
                 // then we should render this child on a new canvas,
                 // clip it, and only then draw it to the `clipPath`.
@@ -97,11 +97,11 @@ fn clip_group(
     Some(())
 }
 
-fn draw_group_child(tree: &usvg::Tree, node: &usvg::Node, canvas: &mut Canvas) {
+fn draw_group_child(tree: &usvgr::Tree, node: &usvgr::Node, canvas: &mut Canvas) {
     if let Some(child) = node.first_child() {
         canvas.apply_transform(child.transform().to_native());
 
-         if let usvg::NodeKind::Path(ref path_node) = *child.borrow() {
+         if let usvgr::NodeKind::Path(ref path_node) = *child.borrow() {
                 crate::path::draw(tree, path_node, tiny_skia::BlendMode::SourceOver, canvas);
         }
     }

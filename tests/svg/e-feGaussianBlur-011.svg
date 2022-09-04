@@ -2,7 +2,7 @@
     <title>Small `stdDeviation`</title>
     <desc>
         According to the SVG spec, when stdDeviation >= 2 than a box blur can be used.
-        resvg uses IIR blur for smaller stdDeviation and this test tests it.
+        svgr uses IIR blur for smaller stdDeviation and this test tests it.
     </desc>
 
     <filter id="filter1">

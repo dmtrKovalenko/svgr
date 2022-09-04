@@ -7,7 +7,7 @@ members = ["."]
 
 [dependencies]
 afl = "0.4"
-usvg = { path = "../.." }
+usvgr = { path = "../.." }
 
 [[bin]]
 name = "afl-fuzz"

@@ -4,7 +4,7 @@
 
 use std::path;
 
-use usvg::NodeExt;
+use usvgr::NodeExt;
 
 macro_rules! timed {
     ($args:expr, $name:expr, $task:expr) => {
@@ -66,7 +66,7 @@ fn process() -> Result<(), String> {
     let tree = timed!(
         args,
         "Parsing",
-        usvg::Tree::from_data(&svg_data, &args.usvg.to_ref()).map_err(|e| e.to_string())
+        usvgr::Tree::from_data(&svg_data, &args.usvgr.to_ref()).map_err(|e| e.to_string())
     )?;
 
     if args.query_all {
@@ -188,9 +188,9 @@ struct CliArgs {
     background: Option<svgtypes::Color>,
 
     languages: Vec<String>,
-    shape_rendering: usvg::ShapeRendering,
-    text_rendering: usvg::TextRendering,
-    image_rendering: usvg::ImageRendering,
+    shape_rendering: usvgr::ShapeRendering,
+    text_rendering: usvgr::TextRendering,
+    image_rendering: usvgr::ImageRendering,
     resources_dir: Option<path::PathBuf>,
 
     font_family: Option<String>,
@@ -347,8 +347,8 @@ struct Args {
     dump: Option<path::PathBuf>,
     perf: bool,
     quiet: bool,
-    usvg: usvg::Options,
-    fit_to: usvg::FitTo,
+    usvgr: usvgr::Options,
+    fit_to: usvgr::FitTo,
     background: Option<svgtypes::Color>,
 }
 
@@ -358,7 +358,7 @@ fn parse_args() -> Result<Args, String> {
     let fontdb = timed!(args, "FontDB init", load_fonts(&mut args));
     if args.list_fonts {
         for face in fontdb.faces() {
-            if let usvg::fontdb::Source::File(ref path) = &face.source {
+            if let usvgr::fontdb::Source::File(ref path) = &face.source {
                 println!(
                     "{}: '{}', {}, {:?}, {:?}, {:?}",
                     path.display(),
@@ -398,19 +398,19 @@ fn parse_args() -> Result<Args, String> {
     // because it will slow down rendering.
     let keep_named_groups = args.query_all || export_id.is_some();
 
-    let mut fit_to = usvg::FitTo::Original;
-    let mut default_size = usvg::Size::new(100.0, 100.0).unwrap();
+    let mut fit_to = usvgr::FitTo::Original;
+    let mut default_size = usvgr::Size::new(100.0, 100.0).unwrap();
     if let (Some(w), Some(h)) = (args.width, args.height) {
-        default_size = usvg::Size::new(w as f64, h as f64).unwrap();
-        fit_to = usvg::FitTo::Size(w, h);
+        default_size = usvgr::Size::new(w as f64, h as f64).unwrap();
+        fit_to = usvgr::FitTo::Size(w, h);
     } else if let Some(w) = args.width {
-        default_size = usvg::Size::new(w as f64, 100.0).unwrap();
-        fit_to = usvg::FitTo::Width(w);
+        default_size = usvgr::Size::new(w as f64, 100.0).unwrap();
+        fit_to = usvgr::FitTo::Width(w);
     } else if let Some(h) = args.height {
-        default_size = usvg::Size::new(100.0, h as f64).unwrap();
-        fit_to = usvg::FitTo::Height(h);
+        default_size = usvgr::Size::new(100.0, h as f64).unwrap();
+        fit_to = usvgr::FitTo::Height(h);
     } else if let Some(z) = args.zoom {
-        fit_to = usvg::FitTo::Zoom(z);
+        fit_to = usvgr::FitTo::Zoom(z);
     }
 
     let resources_dir = match args.resources_dir {
@@ -423,7 +423,7 @@ fn parse_args() -> Result<Args, String> {
         }
     };
 
-    let usvg = usvg::Options {
+    let usvgr = usvgr::Options {
         resources_dir,
         dpi: args.dpi as f64,
         font_family: args
@@ -451,14 +451,14 @@ fn parse_args() -> Result<Args, String> {
         dump,
         perf: args.perf,
         quiet: args.quiet,
-        usvg,
+        usvgr,
         fit_to,
         background: args.background,
     })
 }
 
-fn load_fonts(args: &mut CliArgs) -> usvg::fontdb::Database {
-    let mut fontdb = usvg::fontdb::Database::new();
+fn load_fonts(args: &mut CliArgs) -> usvgr::fontdb::Database {
+    let mut fontdb = usvgr::fontdb::Database::new();
     if !args.skip_system_fonts {
         fontdb.load_system_fonts();
     }
@@ -485,7 +485,7 @@ fn load_fonts(args: &mut CliArgs) -> usvg::fontdb::Database {
     fontdb
 }
 
-fn query_all(tree: &usvg::Tree) -> Result<(), String> {
+fn query_all(tree: &usvgr::Tree) -> Result<(), String> {
     let mut count = 0;
     for node in tree.root().descendants() {
         if tree.is_in_defs(&node) {
@@ -522,25 +522,25 @@ fn query_all(tree: &usvg::Tree) -> Result<(), String> {
 }
 
 #[cfg(feature = "dump-svg")]
-fn dump_svg(tree: &usvg::Tree, path: &path::Path) -> Result<(), String> {
+fn dump_svg(tree: &usvgr::Tree, path: &path::Path) -> Result<(), String> {
     use std::io::Write;
 
     let mut f =
         std::fs::File::create(path).map_err(|_| format!("failed to create a file {:?}", path))?;
 
-    f.write_all(tree.to_string(&usvg::XmlOptions::default()).as_bytes())
+    f.write_all(tree.to_string(&usvgr::XmlOptions::default()).as_bytes())
         .map_err(|_| format!("failed to write a file {:?}", path))?;
 
     Ok(())
 }
 
 #[cfg(not(feature = "dump-svg"))]
-fn dump_svg(_: &usvg::Tree, _: &path::Path) -> Result<(), String> {
+fn dump_svg(_: &usvgr::Tree, _: &path::Path) -> Result<(), String> {
     log::warn!("The dump-svg feature is not enabled.");
     Ok(())
 }
 
-fn render_svg(args: Args, tree: &usvg::Tree, out_png: &path::Path) -> Result<(), String> {
+fn render_svg(args: Args, tree: &usvgr::Tree, out_png: &path::Path) -> Result<(), String> {
     let now = std::time::Instant::now();
 
     let img = if let Some(ref id) = args.export_id {
@@ -568,7 +568,7 @@ fn render_svg(args: Args, tree: &usvg::Tree, out_png: &path::Path) -> Result<(),
             }
         }
 
-        resvg::render_node(
+        svgr::render_node(
             tree,
             &node,
             args.fit_to,
@@ -618,7 +618,7 @@ fn render_svg(args: Args, tree: &usvg::Tree, out_png: &path::Path) -> Result<(),
             }
         }
 
-        resvg::render(
+        svgr::render(
             tree,
             args.fit_to,
             tiny_skia::Transform::default(),
@@ -626,8 +626,8 @@ fn render_svg(args: Args, tree: &usvg::Tree, out_png: &path::Path) -> Result<(),
         );
 
         if args.export_area_drawing {
-            let (_, _, pixmap) = resvg::trim_transparency(pixmap)
-                .ok_or_else(|| "target size is zero".to_string())?;
+            let (_, _, pixmap) =
+                svgr::trim_transparency(pixmap).ok_or_else(|| "target size is zero".to_string())?;
 
             if let Some(background) = args.background {
                 let mut bg = pixmap.clone();

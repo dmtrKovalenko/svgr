@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use once_cell::sync::Lazy;
 use rgb::FromSlice;
-use usvg::PreloadedImageData;
+use usvgr::PreloadedImageData;
 
 const IMAGE_SIZE: u32 = 300;
 
@@ -17,8 +17,8 @@ fn load_image(path: &str) -> Arc<PreloadedImageData> {
     )
 }
 
-static GLOBAL_OPT: Lazy<std::sync::Mutex<usvg::Options>> = Lazy::new(|| {
-    let mut opt = usvg::Options::default();
+static GLOBAL_OPT: Lazy<std::sync::Mutex<usvgr::Options>> = Lazy::new(|| {
+    let mut opt = usvgr::Options::default();
     opt.font_family = "Noto Sans".to_string();
     opt.fontdb.load_fonts_dir("tests/fonts");
     opt.fontdb.set_serif_family("Noto Serif");
@@ -45,16 +45,16 @@ pub fn render(name: &str) -> usize {
     // Do not unwrap on the from_data line, because panic will poison GLOBAL_OPT.
     let tree = {
         let svg_data = std::fs::read(&svg_path).unwrap();
-        let tree = usvg::Tree::from_data(&svg_data, &GLOBAL_OPT.lock().unwrap().to_ref());
+        let tree = usvgr::Tree::from_data(&svg_data, &GLOBAL_OPT.lock().unwrap().to_ref());
         tree.unwrap()
     };
 
-    let fit_to = usvg::FitTo::Width(IMAGE_SIZE);
+    let fit_to = usvgr::FitTo::Width(IMAGE_SIZE);
     let size = fit_to
         .fit_to(tree.svg_node().size.to_screen_size())
         .unwrap();
     let mut pixmap = tiny_skia::Pixmap::new(size.width(), size.height()).unwrap();
-    resvg::render(
+    svgr::render(
         &tree,
         fit_to,
         tiny_skia::Transform::default(),

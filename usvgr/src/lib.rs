@@ -3,7 +3,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 /*!
-`usvg` (micro SVG) is an [SVG] simplification tool.
+`usvgr` (micro SVG) is an [SVG] simplification tool.
 
 ## Purpose
 
@@ -19,9 +19,9 @@ visibility flags, attribute values validation, XML quirks, etc.
 It will take a lot of time and code to implement this stuff correctly.
 
 So, instead of creating a library that can be used from any language (impossible),
-*usvg* takes a different approach. It converts an input SVG to an extremely
+*usvgr* takes a different approach. It converts an input SVG to an extremely
 simple representation, which is still a valid SVG.
-And now, all you need is to convert your SVG to a simplified one via *usvg*
+And now, all you need is to convert your SVG to a simplified one via *usvgr*
 and an XML library with some small amount of code.
 
 ## Key features of the simplified SVG
@@ -42,7 +42,7 @@ and an XML library with some small amount of code.
 - No CSS (partial support)
 - No `script` (simply ignoring it)
 
-Full spec can be found [here](https://github.com/RazrFalcon/resvg/blob/master/docs/usvg_spec.adoc).
+Full spec can be found [here](https://github.com/RazrFalcon/svgr/blob/master/docs/usvgr_spec.adoc).
 
 ## Limitations
 

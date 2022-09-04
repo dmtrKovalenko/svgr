@@ -484,10 +484,10 @@ fn gen_paint_server_id(tree: &Tree) -> String {
     // TODO: speed up
 
     let mut idx = 1;
-    let mut id = format!("usvg{}", idx);
+    let mut id = format!("usvgr{}", idx);
     while tree.defs().children().any(|n| *n.id() == id) {
         idx += 1;
-        id = format!("usvg{}", idx);
+        id = format!("usvgr{}", idx);
     }
 
     id

@@ -18,10 +18,10 @@ macro_rules! test {
             let in_str = std::fs::read_to_string(format!("tests/files/{}-in.svg", name)).unwrap();
             let out_str = std::fs::read_to_string(format!("tests/files/{}-out.svg", name)).unwrap();
 
-            let opt = usvg::Options::default();
-            let tree = usvg::Tree::from_str(&in_str, &opt.to_ref()).unwrap();
+            let opt = usvgr::Options::default();
+            let tree = usvgr::Tree::from_str(&in_str, &opt.to_ref()).unwrap();
 
-            let xml_opt = usvg::XmlOptions {
+            let xml_opt = usvgr::XmlOptions {
                 id_prefix: None,
                 writer_opts: xmlwriter::Options {
                     use_single_quote: false,
@@ -43,13 +43,13 @@ macro_rules! test_preserve {
             let in_str = std::fs::read_to_string(format!("tests/files/{}-in.svg", name)).unwrap();
             let out_str = std::fs::read_to_string(format!("tests/files/{}-out.svg", name)).unwrap();
 
-            let re_opt = usvg::Options {
+            let re_opt = usvgr::Options {
                 keep_named_groups: true,
-                .. usvg::Options::default()
+                .. usvgr::Options::default()
             };
-            let tree = usvg::Tree::from_str(&in_str, &re_opt.to_ref()).unwrap();
+            let tree = usvgr::Tree::from_str(&in_str, &re_opt.to_ref()).unwrap();
 
-            let xml_opt = usvg::XmlOptions {
+            let xml_opt = usvgr::XmlOptions {
                 id_prefix: None,
                 writer_opts: xmlwriter::Options {
                     use_single_quote: false,
@@ -101,9 +101,9 @@ macro_rules! test_size {
     ($name:ident, $input:expr, $expected:expr) => {
         #[test]
         fn $name() {
-            use usvg::FuzzyEq;
-            let opt = usvg::Options::default();
-            let tree = usvg::Tree::from_str($input, &opt.to_ref()).unwrap();
+            use usvgr::FuzzyEq;
+            let opt = usvgr::Options::default();
+            let tree = usvgr::Tree::from_str($input, &opt.to_ref()).unwrap();
             assert!(tree.svg_node().size.fuzzy_eq(&$expected));
         }
     };
@@ -111,43 +111,43 @@ macro_rules! test_size {
 
 test_size!(size_detection_1,
     "<svg viewBox='0 0 10 20' xmlns='http://www.w3.org/2000/svg'>",
-    usvg::Size::new(10.0, 20.0).unwrap()
+    usvgr::Size::new(10.0, 20.0).unwrap()
 );
 
 test_size!(size_detection_2,
     "<svg width='30' height='40' viewBox='0 0 10 20' xmlns='http://www.w3.org/2000/svg'>",
-    usvg::Size::new(30.0, 40.0).unwrap()
+    usvgr::Size::new(30.0, 40.0).unwrap()
 );
 
 test_size!(size_detection_3,
     "<svg width='50%' height='100%' viewBox='0 0 10 20' xmlns='http://www.w3.org/2000/svg'>",
-    usvg::Size::new(5.0, 20.0).unwrap()
+    usvgr::Size::new(5.0, 20.0).unwrap()
 );
 
 test_size!(size_detection_4,
     "<svg xmlns='http://www.w3.org/2000/svg'><circle fill='#F4900C' cx='18' cy='18' r='18'/></svg>",
-    usvg::Size::new(36.0, 36.0).unwrap()
+    usvgr::Size::new(36.0, 36.0).unwrap()
 );
 
 test_size!(size_detection_5,
     "<svg xmlns='http://www.w3.org/2000/svg'/>",
-    usvg::Size::new(100.0, 100.0).unwrap()
+    usvgr::Size::new(100.0, 100.0).unwrap()
 );
 
 #[test]
 fn viewbox_detection() {
-    use usvg::FuzzyEq;
-    let opt = usvg::Options::default();
-    let tree = usvg::Tree::from_str("<svg xmlns='http://www.w3.org/2000/svg'><circle fill='#F4900C' cx='18' cy='18' r='18'/></svg>", &opt.to_ref()).unwrap();
-    assert!(tree.svg_node().view_box.rect.fuzzy_eq(&usvg::Rect::new(0.0, 0.0, 36.0, 36.0).unwrap()));
+    use usvgr::FuzzyEq;
+    let opt = usvgr::Options::default();
+    let tree = usvgr::Tree::from_str("<svg xmlns='http://www.w3.org/2000/svg'><circle fill='#F4900C' cx='18' cy='18' r='18'/></svg>", &opt.to_ref()).unwrap();
+    assert!(tree.svg_node().view_box.rect.fuzzy_eq(&usvgr::Rect::new(0.0, 0.0, 36.0, 36.0).unwrap()));
 }
 
 macro_rules! test_size_err {
     ($name:ident, $input:expr) => {
         #[test]
         fn $name() {
-            let opt = usvg::Options::default();
-            assert!(usvg::Tree::from_str($input, &opt.to_ref()).is_err());
+            let opt = usvgr::Options::default();
+            assert!(usvgr::Tree::from_str($input, &opt.to_ref()).is_err());
         }
     };
 }

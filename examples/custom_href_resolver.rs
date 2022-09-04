@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use image;
-use usvg::PreloadedImageData;
+use usvgr::PreloadedImageData;
 
 fn main() {
-    let mut opt = usvg::Options::default();
+    let mut opt = usvgr::Options::default();
 
     let ferris_image = std::fs::read("./examples/ferris.png").unwrap();
     let ferris_image = image::load_from_memory(ferris_image.as_slice()).unwrap();
@@ -19,14 +19,14 @@ fn main() {
     );
 
     let svg_data = std::fs::read("./examples/custom_href_resolver.svg").unwrap();
-    let rtree = usvg::Tree::from_data(&svg_data, &opt.to_ref()).unwrap();
+    let rtree = usvgr::Tree::from_data(&svg_data, &opt.to_ref()).unwrap();
 
     let pixmap_size = rtree.svg_node().size.to_screen_size();
     let mut pixmap = tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).unwrap();
 
-    resvg::render(
+    svgr::render(
         &rtree,
-        usvg::FitTo::Original,
+        usvgr::FitTo::Original,
         tiny_skia::Transform::default(),
         pixmap.as_mut(),
     )

@@ -2,9 +2,9 @@
      xmlns:xlink="http://www.w3.org/1999/xlink">
     <title>Link to an element with opacity</title>
     <desc>
-        resvg specific test.
+        svgr specific test.
         When `opacity`, `filter`, `mask` and/or `clip-path` attributes are present,
-        resvg will create a parent group and move them to it.
+        svgr will create a parent group and move them to it.
         This works fine for most cases, but in case of `feImage`
         we potentially can still point to the original element and not the group,
         which will lead to an invalid results.

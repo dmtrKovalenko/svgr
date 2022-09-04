@@ -4,7 +4,7 @@
     <desc>
         In SVG 1.1, `symbol` cannot have a `transform`, so it should be ignored.
         But since SVG 2.0, `symbol` can have a `transform`.
-        Since resvg-test-suite is for SVG 1.1, this test should ignore `transform`.
+        Since svgr-test-suite is for SVG 1.1, this test should ignore `transform`.
     </desc>
 
     <symbol id="symbol1" transform="skewX(30)">

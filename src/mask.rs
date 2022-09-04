@@ -2,19 +2,19 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use usvg::TransformFromBBox;
+use usvgr::TransformFromBBox;
 
 use crate::{ConvTransform, render::{Canvas, RenderState}};
 
 pub fn mask(
-    tree: &usvg::Tree,
-    node: &usvg::Node,
-    mask: &usvg::Mask,
-    bbox: usvg::PathBbox,
+    tree: &usvgr::Tree,
+    node: &usvgr::Node,
+    mask: &usvgr::Mask,
+    bbox: usvgr::PathBbox,
     canvas: &mut Canvas,
 ) -> Option<()> {
-    let bbox = if mask.units == usvg::Units::ObjectBoundingBox ||
-                  mask.content_units == usvg::Units::ObjectBoundingBox
+    let bbox = if mask.units == usvgr::Units::ObjectBoundingBox ||
+                  mask.content_units == usvgr::Units::ObjectBoundingBox
     {
         if let Some(bbox) = bbox.to_rect() {
             bbox
@@ -25,7 +25,7 @@ pub fn mask(
             return None;
         }
     } else {
-        usvg::Rect::new_bbox() // actual value doesn't matter, unreachable
+        usvgr::Rect::new_bbox() // actual value doesn't matter, unreachable
     };
 
     let mut mask_pixmap = tiny_skia::Pixmap::new(canvas.pixmap.width(), canvas.pixmap.height())?;
@@ -33,7 +33,7 @@ pub fn mask(
         let mut mask_canvas = Canvas::from(mask_pixmap.as_mut());
         mask_canvas.transform = canvas.transform;
 
-        let r = if mask.units == usvg::Units::ObjectBoundingBox {
+        let r = if mask.units == usvgr::Units::ObjectBoundingBox {
             mask.rect.bbox_transform(bbox)
         } else {
             mask.rect
@@ -49,8 +49,8 @@ pub fn mask(
             mask_canvas.set_clip_rect(rr);
         }
 
-        if mask.content_units == usvg::Units::ObjectBoundingBox {
-            mask_canvas.apply_transform(usvg::Transform::from_bbox(bbox).to_native());
+        if mask.content_units == usvgr::Units::ObjectBoundingBox {
+            mask_canvas.apply_transform(usvgr::Transform::from_bbox(bbox).to_native());
         }
 
         crate::render::render_group(tree, node, &mut RenderState::Ok, &mut mask_canvas);
@@ -63,7 +63,7 @@ pub fn mask(
 
     if let Some(ref id) = mask.mask {
         if let Some(ref mask_node) = tree.defs_by_id(id) {
-            if let usvg::NodeKind::Mask(ref mask) = *mask_node.borrow() {
+            if let usvgr::NodeKind::Mask(ref mask) = *mask_node.borrow() {
                 self::mask(tree, mask_node, mask, bbox.to_path_bbox(), canvas);
             }
         }

@@ -12,10 +12,10 @@
 #![allow(clippy::identity_op)]
 #![allow(clippy::upper_case_acronyms)]
 
-pub use usvg;
+pub use usvgr;
 pub use tiny_skia;
 
-use usvg::NodeExt;
+use usvgr::NodeExt;
 
 mod clip;
 #[cfg(feature = "filter")] mod filter;
@@ -44,7 +44,7 @@ trait ConvTransform {
     fn from_native(_: tiny_skia::Transform) -> Self;
 }
 
-impl ConvTransform for usvg::Transform {
+impl ConvTransform for usvgr::Transform {
     fn to_native(&self) -> tiny_skia::Transform {
         tiny_skia::Transform::from_row(
             self.a as f32, self.b as f32,
@@ -71,8 +71,8 @@ impl ConvTransform for usvg::Transform {
 /// `transform` will be used as a root transform.
 /// Can be used to position SVG inside the `pixmap`.
 pub fn render(
-    tree: &usvg::Tree,
-    fit_to: usvg::FitTo,
+    tree: &usvgr::Tree,
+    fit_to: usvgr::FitTo,
     transform: tiny_skia::Transform,
     pixmap: tiny_skia::PixmapMut,
 ) -> Option<()> {
@@ -91,9 +91,9 @@ pub fn render(
 /// `transform` will be used as a root transform.
 /// Can be used to position SVG inside the `pixmap`.
 pub fn render_node(
-    tree: &usvg::Tree,
-    node: &usvg::Node,
-    fit_to: usvg::FitTo,
+    tree: &usvgr::Tree,
+    node: &usvgr::Node,
+    fit_to: usvgr::FitTo,
     transform: tiny_skia::Transform,
     pixmap: tiny_skia::PixmapMut,
 ) -> Option<()> {
@@ -104,9 +104,9 @@ pub fn render_node(
         return None;
     };
 
-    let vbox = usvg::ViewBox {
+    let vbox = usvgr::ViewBox {
         rect: node_bbox,
-        aspect: usvg::AspectRatio::default(),
+        aspect: usvgr::AspectRatio::default(),
     };
 
     let size = fit_to.fit_to(node_bbox.size().to_screen_size())?;

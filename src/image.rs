@@ -4,8 +4,8 @@
 
 use crate::render::Canvas;
 
-pub fn draw(image: &usvg::Image, canvas: &mut Canvas) -> usvg::PathBbox {
-    if image.visibility != usvg::Visibility::Visible {
+pub fn draw(image: &usvgr::Image, canvas: &mut Canvas) -> usvgr::PathBbox {
+    if image.visibility != usvgr::Visibility::Visible {
         return image.view_box.rect.to_path_bbox();
     }
 
@@ -17,12 +17,12 @@ pub fn draw(image: &usvg::Image, canvas: &mut Canvas) -> usvg::PathBbox {
 pub mod raster_images {
     use crate::render::Canvas;
     use std::sync::Arc;
-    use usvg::PreloadedImageData;
+    use usvgr::PreloadedImageData;
 
     pub fn draw_raster(
         img: &Arc<PreloadedImageData>,
-        view_box: usvg::ViewBox,
-        rendering_mode: usvg::ImageRendering,
+        view_box: usvgr::ViewBox,
+        rendering_mode: usvgr::ImageRendering,
         canvas: &mut Canvas,
     ) -> Option<()> {
         let mut img_bytes = img.data.clone();
@@ -30,11 +30,11 @@ pub mod raster_images {
             tiny_skia::PixmapMut::from_bytes(img_bytes.as_mut_slice(), img.width, img.height)?;
 
         let mut filter = tiny_skia::FilterQuality::Bicubic;
-        if rendering_mode == usvg::ImageRendering::OptimizeSpeed {
+        if rendering_mode == usvgr::ImageRendering::OptimizeSpeed {
             filter = tiny_skia::FilterQuality::Nearest;
         }
 
-        let r = image_rect(&view_box, usvg::ScreenSize::new(img.width, img.height)?);
+        let r = image_rect(&view_box, usvgr::ScreenSize::new(img.width, img.height)?);
         let rect = tiny_skia::Rect::from_xywh(
             r.x() as f32,
             r.y() as f32,
@@ -77,9 +77,9 @@ pub mod raster_images {
     }
 
     /// Calculates an image rect depending on the provided view box.
-    fn image_rect(view_box: &usvg::ViewBox, img_size: usvg::ScreenSize) -> usvg::Rect {
+    fn image_rect(view_box: &usvgr::ViewBox, img_size: usvgr::ScreenSize) -> usvgr::Rect {
         let new_size = img_size.to_size().fit_view_box(view_box);
-        let (x, y) = usvg::utils::aligned_pos(
+        let (x, y) = usvgr::utils::aligned_pos(
             view_box.aspect.align,
             view_box.rect.x(),
             view_box.rect.y(),

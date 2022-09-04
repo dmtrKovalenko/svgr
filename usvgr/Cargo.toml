@@ -1,5 +1,5 @@
 [package]
-name = "usvg"
+name = "usvgr"
 version = "0.23.0"
 authors = ["Yevhenii Reizner <razrfalcon@gmail.com>"]
 keywords = ["svg"]
@@ -7,8 +7,8 @@ license = "MPL-2.0"
 edition = "2018"
 description = "An SVG simplification library."
 categories = ["multimedia::images"]
-repository = "https://github.com/RazrFalcon/resvg"
-documentation = "https://docs.rs/usvg/"
+repository = "https://github.com/RazrFalcon/svgr"
+documentation = "https://docs.rs/usvgr/"
 readme = "README.md"
 exclude = ["testing-tools/**"]
 workspace = ".."

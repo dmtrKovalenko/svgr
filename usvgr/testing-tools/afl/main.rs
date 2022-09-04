@@ -1,16 +1,16 @@
 extern crate afl;
-extern crate usvg;
+extern crate usvgr;
 
 use std::str;
 
 use afl::fuzz;
 
 fn main() {
-    let opt = usvg::Options::default();
+    let opt = usvgr::Options::default();
 
     fuzz(|data| {
         if let Ok(text) = str::from_utf8(data) {
-            let _ = usvg::Tree::from_str(text, &opt);
+            let _ = usvgr::Tree::from_str(text, &opt);
         }
     });
 }
