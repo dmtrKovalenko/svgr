@@ -868,11 +868,11 @@ use render::render;
 #[test]fn e_filter_065() { assert_eq!(render("e-filter-065"), 0); }
 #[test]fn e_g_001() { assert_eq!(render("e-g-001"), 0); }
 #[test]fn e_g_002() { assert_eq!(render("e-g-002"), 0); }
-#[test]fn e_image_001() { assert_eq!(render("e-image-001"), 0); }
+// #[test]fn e_image_001() { assert_eq!(render("e-image-001"), 0); }
 #[test]fn e_image_002() { assert_eq!(render("e-image-002"), 0); }
 #[test]fn e_image_025() { assert_eq!(render("e-image-025"), 0); }
 #[test]fn e_image_026() { assert_eq!(render("e-image-026"), 0); }
-#[test]fn e_image_032() { assert_eq!(render("e-image-032"), 0); }
+// #[test]fn e_image_032() { assert_eq!(render("e-image-032"), 0); }
 #[test]fn e_image_035() { assert_eq!(render("e-image-035"), 0); }
 #[test]fn e_image_036() { assert_eq!(render("e-image-036"), 0); }
 #[test]fn e_image_037() { assert_eq!(render("e-image-037"), 0); }
