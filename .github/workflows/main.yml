@@ -9,31 +9,23 @@ jobs:
   build:
     runs-on: ubuntu-18.04
     steps:
-    - name: Checkout
-      uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v2
 
-    # We have to use the Release mode, otherwise it would take forever.
-    - name: Test
-      run: cargo test --release
+      # We have to use the Release mode, otherwise it would take forever.
+      - name: Test
+        run: cargo test --release
 
-    - name: Build C API
-      working-directory: c-api
-      run: cargo build
+      - name: Test usvgr
+        working-directory: usvgr
+        run: cargo test
 
-    - name: Build C API without default features
-      working-directory: c-api
-      run: cargo build --no-default-features
+      - name: Build svgr without default support
+        run: cargo check --no-default-features
 
-    - name: Test usvgr
-      working-directory: usvgr
-      run: cargo test
-
-    - name: Build svgr without default support
-      run: cargo check --no-default-features
-
-    - name: Build usvgr without default support
-      working-directory: usvgr
-      run: cargo check --no-default-features
+      - name: Build usvgr without default support
+        working-directory: usvgr
+        run: cargo check --no-default-features
 
   msrv:
     runs-on: ubuntu-18.04
@@ -49,37 +41,3 @@ jobs:
 
       - name: Build
         run: cargo build --features dump-svg
-
-  # We have some Windows specific code that we should check on each commit.
-  windows:
-    runs-on: windows-2019
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-
-      # Toolchain is stable-x86_64-pc-windows-msvc by default. No need to change it.
-
-      - name: Build thumbnailer
-        working-directory: tools/explorer-thumbnailer
-        env:
-          RUSTFLAGS: -Ctarget-feature=+crt-static # make sure it's static
-        run: cargo build
-
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v2
-        with:
-          version: '5.15.2'
-
-      # Unlike other binaries, viewsvg isn't built with crt-static
-      - name: Build C API
-        working-directory: c-api
-        run: cargo build --release
-
-      - name: Prepare Developer Command Prompt for MSVC
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Build viewsvg
-        working-directory: tools/viewsvg
-        run: |
-          qmake
-          nmake
