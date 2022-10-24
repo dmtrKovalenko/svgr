@@ -95,11 +95,41 @@ pub(crate) fn convert(
         .find_attribute(AId::ImageRendering)
         .unwrap_or(state.opt.image_rendering);
 
+    // FFrames change: in order to be compatible with chrome we calculate the image rect
+    // based on provided image dimensions instead of skipping
+    let mut width = node.convert_user_length(AId::Width, state, Length::zero());
+    let mut height = node.convert_user_length(AId::Height, state, Length::zero());
+
+    let has_width = node.has_attribute(AId::Width);
+    let has_height = node.has_attribute(AId::Height);
+
+    if !has_height && !has_width {
+        log::warn!("Image is missing width and height attributes. Ignoring.");
+        return None;
+    }
+
+    if !has_width || !has_height {
+        let href = node.attribute::<&str>(AId::Href)?;
+        let data = state.opt.image_data.get(href)?;
+        let native_width = data.width as f64;
+        let native_height = data.height as f64;
+
+        if !has_width {
+            let proportion = height / native_height as f64;
+            width = native_width as f64 * proportion;
+        }
+
+        if !has_height {
+            let proportion = width / native_width as f64;
+            height = native_height as f64 * proportion;
+        }
+    }
+
     let rect = Rect::new(
         node.convert_user_length(AId::X, state, Length::zero()),
         node.convert_user_length(AId::Y, state, Length::zero()),
-        node.convert_user_length(AId::Width, state, Length::zero()),
-        node.convert_user_length(AId::Height, state, Length::zero()),
+        width,
+        height,
     );
     let rect = rect.log_none(|| log::warn!("Image has an invalid size. Skipped."))?;
 
