@@ -4,7 +4,7 @@
 
 use std::rc::Rc;
 
-use svgtypes::Length;
+use svgrtypes::Length;
 
 use crate::svgtree::{self, EId, AId};
 use crate::{converter, units, FuzzyEq, IsValidLength, PathData, PathSegment, Rect, SharedPathData, Units};
@@ -148,7 +148,7 @@ fn points_to_path(
     node: svgtree::Node,
     eid: &str,
 ) -> Option<PathData> {
-    use svgtypes::PointsParser;
+    use svgrtypes::PointsParser;
 
     let mut path = PathData::new();
     match node.attribute::<&str>(AId::Points) {

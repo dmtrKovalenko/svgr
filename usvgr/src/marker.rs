@@ -5,7 +5,7 @@
 use std::f64;
 use std::rc::Rc;
 
-use svgtypes::Length;
+use svgrtypes::Length;
 use strict_num::NonZeroPositiveF64;
 
 use crate::svgtree::{self, EId, AId};
@@ -469,7 +469,7 @@ fn convert_orientation(
     if node.attribute(AId::Orient) == Some("auto") {
         MarkerOrientation::Auto
     } else {
-        match node.attribute::<svgtypes::Angle>(AId::Orient) {
+        match node.attribute::<svgrtypes::Angle>(AId::Orient) {
             Some(angle) => MarkerOrientation::Angle(angle.to_degrees()),
             None => MarkerOrientation::Angle(0.0),
         }

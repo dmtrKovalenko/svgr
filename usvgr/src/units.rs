@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use svgtypes::{Length, LengthUnit as Unit};
+use svgrtypes::{Length, LengthUnit as Unit};
 
 use crate::{converter, Units};
 use crate::svgtree::{self, AId};
@@ -61,7 +61,7 @@ pub(crate) fn convert_list(
 ) -> Option<Vec<f64>> {
     if let Some(text) = node.attribute::<&str>(aid) {
         let mut num_list = Vec::new();
-        for length in svgtypes::LengthListParser::from(text) {
+        for length in svgrtypes::LengthListParser::from(text) {
             if let Ok(length) = length {
                 num_list.push(convert_length(length, node, aid, Units::UserSpaceOnUse, state));
             }

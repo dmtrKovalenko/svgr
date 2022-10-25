@@ -39,7 +39,7 @@ pub(crate) fn convert(fe: svgtree::Node, primitives: &[Primitive]) -> Kind {
 
 pub(crate) fn convert_std_dev_attr(fe: svgtree::Node, default: &str) -> (PositiveF64, PositiveF64) {
     let text = fe.attribute::<&str>(AId::StdDeviation).unwrap_or(default);
-    let mut parser = svgtypes::NumberListParser::from(text);
+    let mut parser = svgrtypes::NumberListParser::from(text);
 
     let n1 = parser.next().and_then(|n| n.ok());
     let n2 = parser.next().and_then(|n| n.ok());

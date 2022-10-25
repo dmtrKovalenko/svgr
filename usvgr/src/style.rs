@@ -218,7 +218,7 @@ pub(crate) trait SvgColorExt {
     fn split_alpha(self) -> (Color, Opacity);
 }
 
-impl SvgColorExt for svgtypes::Color {
+impl SvgColorExt for svgrtypes::Color {
     fn split_alpha(self) -> (Color, Opacity) {
         (
             Color::new_rgb(self.red, self.green, self.blue),
@@ -323,8 +323,8 @@ fn convert_paint(
 ) -> Option<Paint> {
     match node.attribute::<&svgtree::AttributeValue>(aid)? {
         svgtree::AttributeValue::CurrentColor => {
-            let svg_color: svgtypes::Color = node.find_attribute(AId::Color)
-                .unwrap_or_else(svgtypes::Color::black);
+            let svg_color: svgrtypes::Color = node.find_attribute(AId::Color)
+                .unwrap_or_else(svgrtypes::Color::black);
             let (color, alpha) = svg_color.split_alpha();
             *opacity = alpha;
             Some(Paint::Color(color))
@@ -374,21 +374,21 @@ fn convert_paint(
 
 fn from_fallback(
     node: svgtree::Node,
-    fallback: Option<svgtypes::PaintFallback>,
+    fallback: Option<svgrtypes::PaintFallback>,
     opacity: &mut Opacity,
 ) -> Option<Paint> {
     match fallback? {
-        svgtypes::PaintFallback::None => {
+        svgrtypes::PaintFallback::None => {
             None
         }
-        svgtypes::PaintFallback::CurrentColor => {
-            let svg_color: svgtypes::Color = node.find_attribute(AId::Color)
-                .unwrap_or_else(svgtypes::Color::black);
+        svgrtypes::PaintFallback::CurrentColor => {
+            let svg_color: svgrtypes::Color = node.find_attribute(AId::Color)
+                .unwrap_or_else(svgrtypes::Color::black);
             let (color, alpha) = svg_color.split_alpha();
             *opacity = alpha;
             Some(Paint::Color(color))
         }
-        svgtypes::PaintFallback::Color(svg_color) => {
+        svgrtypes::PaintFallback::Color(svg_color) => {
             let (color, alpha) = svg_color.split_alpha();
             *opacity = alpha;
             Some(Paint::Color(color))

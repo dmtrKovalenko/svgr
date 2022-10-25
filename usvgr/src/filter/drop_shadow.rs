@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use svgtypes::Length;
+use svgrtypes::Length;
 use strict_num::PositiveF64;
 
 use crate::svgtree::{self, AId};
@@ -56,7 +56,7 @@ pub(crate) fn convert(
     let (std_dev_x, std_dev_y) = super::gaussian_blur::convert_std_dev_attr(fe, "2 2");
 
     let (color, opacity) = fe.attribute(AId::FloodColor)
-        .unwrap_or_else(svgtypes::Color::black)
+        .unwrap_or_else(svgrtypes::Color::black)
         .split_alpha();
 
     Kind::DropShadow(DropShadow {

@@ -185,7 +185,7 @@ struct CliArgs {
     height: Option<u32>,
     zoom: Option<f32>,
     dpi: u32,
-    background: Option<svgtypes::Color>,
+    background: Option<svgrtypes::Color>,
 
     languages: Vec<String>,
     shape_rendering: usvgr::ShapeRendering,
@@ -349,7 +349,7 @@ struct Args {
     quiet: bool,
     usvgr: usvgr::Options,
     fit_to: usvgr::FitTo,
-    background: Option<svgtypes::Color>,
+    background: Option<svgrtypes::Color>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -663,7 +663,7 @@ fn render_svg(args: Args, tree: &usvgr::Tree, out_png: &path::Path) -> Result<()
     )
 }
 
-fn svg_to_skia_color(color: svgtypes::Color) -> tiny_skia::Color {
+fn svg_to_skia_color(color: svgrtypes::Color) -> tiny_skia::Color {
     tiny_skia::Color::from_rgba8(color.red, color.green, color.blue, color.alpha)
 }
 

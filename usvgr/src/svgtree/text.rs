@@ -92,7 +92,7 @@ fn resolve_tref_text(
     xml: &roxmltree::Document,
     href: &str,
 ) -> Option<String> {
-    let id = svgtypes::IRI::from_str(href).ok()?.0;
+    let id = svgrtypes::IRI::from_str(href).ok()?.0;
 
     // Find linked element in the original tree.
     let node = xml.descendants().find(|n| n.attribute("id") == Some(id))?;

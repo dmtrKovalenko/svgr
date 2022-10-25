@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use svgtypes::Length;
+use svgrtypes::Length;
 use strict_num::PositiveF64;
 
 use crate::svgtree::{self, AId};
@@ -78,7 +78,7 @@ pub fn convert_saturate(amount: f64) -> Kind {
 }
 
 #[inline(never)]
-pub fn convert_hue_rotate(amount: svgtypes::Angle) -> Kind {
+pub fn convert_hue_rotate(amount: svgrtypes::Angle) -> Kind {
     Kind::ColorMatrix(ColorMatrix {
         input: Input::SourceGraphic,
         kind: ColorMatrixKind::HueRotate(amount.to_degrees()),
@@ -150,7 +150,7 @@ pub fn convert_blur(
 #[inline(never)]
 pub fn convert_drop_shadow(
     node: svgtree::Node,
-    color: Option<svgtypes::Color>,
+    color: Option<svgrtypes::Color>,
     dx: Length,
     dy: Length,
     std_dev: Length,
@@ -161,7 +161,7 @@ pub fn convert_drop_shadow(
     ).unwrap_or(PositiveF64::ZERO);
 
     let (color, opacity) = color.unwrap_or_else(||
-        node.find_attribute(AId::Color).unwrap_or_else(svgtypes::Color::black)).split_alpha();
+        node.find_attribute(AId::Color).unwrap_or_else(svgrtypes::Color::black)).split_alpha();
 
     Kind::DropShadow(DropShadow {
         input: Input::SourceGraphic,

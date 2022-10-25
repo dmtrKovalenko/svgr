@@ -110,7 +110,7 @@ fn convert_lighting_color(node: svgtree::Node) -> Color {
     // Color's alpha doesn't affect lighting-color. Simply skip it.
     match node.attribute::<&svgtree::AttributeValue>(AId::LightingColor) {
         Some(svgtree::AttributeValue::CurrentColor) => {
-            node.find_attribute(AId::Color).unwrap_or_else(svgtypes::Color::black).split_alpha().0
+            node.find_attribute(AId::Color).unwrap_or_else(svgrtypes::Color::black).split_alpha().0
         }
         Some(svgtree::AttributeValue::Color(c)) => c.split_alpha().0,
         _ => Color::white(),

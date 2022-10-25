@@ -130,7 +130,7 @@ mod use_node;
 pub mod utils;
 
 pub use strict_num::{ApproxEq, ApproxEqUlps, NonZeroPositiveF64, NormalizedF64, PositiveF64};
-pub use svgtypes::{Align, AspectRatio};
+pub use svgrtypes::{Align, AspectRatio};
 
 pub use roxmltree;
 

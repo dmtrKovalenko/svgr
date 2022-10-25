@@ -15,7 +15,7 @@ mod names;
 #[cfg(feature = "text")] mod text;
 
 pub use names::{EId, AId};
-use svgtypes::Length;
+use svgrtypes::Length;
 use strict_num::NonZeroPositiveF64;
 
 type Range = std::ops::Range<usize>;
@@ -141,20 +141,21 @@ struct NodeData {
 pub enum AttributeValue {
     None,
     CurrentColor,
-    Angle(svgtypes::Angle),
-    AspectRatio(svgtypes::AspectRatio),
-    Color(svgtypes::Color),
+    Angle(svgrtypes::Angle),
+    AspectRatio(svgrtypes::AspectRatio),
+    Color(svgrtypes::Color),
     EnableBackground(EnableBackground),
-    Length(svgtypes::Length),
+    Length(svgrtypes::Length),
     Link(String),
     Number(f64),
     NumberList(Vec<f64>),
     Opacity(Opacity),
-    Paint(String, Option<svgtypes::PaintFallback>),
+    Paint(String, Option<svgrtypes::PaintFallback>),
     Path(SharedPathData),
     String(String),
     Transform(Transform),
-    ViewBox(svgtypes::ViewBox),
+    // TransformOrigin(TransformOrigin),
+    ViewBox(svgrtypes::ViewBox),
 }
 
 #[derive(Clone)]
@@ -318,7 +319,7 @@ impl<'a> Node<'a> {
     }
 
     pub fn get_viewbox(&self) -> Option<Rect> {
-        let vb: svgtypes::ViewBox = self.attribute(AId::ViewBox)?;
+        let vb: svgrtypes::ViewBox = self.attribute(AId::ViewBox)?;
         Rect::new(vb.x, vb.y, vb.w, vb.h)
     }
 
@@ -637,11 +638,11 @@ macro_rules! impl_from_value {
     )
 }
 
-impl_from_value!(svgtypes::Color, Color);
-impl_from_value!(svgtypes::Length, Length);
-impl_from_value!(svgtypes::ViewBox, ViewBox);
-impl_from_value!(svgtypes::AspectRatio, AspectRatio);
-impl_from_value!(svgtypes::Angle, Angle);
+impl_from_value!(svgrtypes::Color, Color);
+impl_from_value!(svgrtypes::Length, Length);
+impl_from_value!(svgrtypes::ViewBox, ViewBox);
+impl_from_value!(svgrtypes::AspectRatio, AspectRatio);
+impl_from_value!(svgrtypes::Angle, Angle);
 impl_from_value!(f64, Number);
 impl_from_value!(Opacity, Opacity);
 impl_from_value!(EnableBackground, EnableBackground);
