@@ -935,8 +935,8 @@ pub struct Transform {
     pub f: f64,
 }
 
-impl From<svgtypes::Transform> for Transform {
-    fn from(ts: svgtypes::Transform) -> Self {
+impl From<svgrtypes::Transform> for Transform {
+    fn from(ts: svgrtypes::Transform) -> Self {
         Transform::new(ts.a, ts.b, ts.c, ts.d, ts.e, ts.f)
     }
 }

@@ -24,7 +24,7 @@ pub struct Flood {
 
 pub(crate) fn convert(fe: svgtree::Node) -> Kind {
     let (color, opacity) = fe.attribute(AId::FloodColor)
-        .unwrap_or_else(svgtypes::Color::black)
+        .unwrap_or_else(svgrtypes::Color::black)
         .split_alpha();
 
     Kind::Flood(Flood {

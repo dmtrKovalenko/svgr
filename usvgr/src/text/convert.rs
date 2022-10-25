@@ -4,7 +4,7 @@
 
 use std::rc::Rc;
 
-use svgtypes::{Length, LengthUnit};
+use svgrtypes::{Length, LengthUnit};
 use strict_num::NonZeroPositiveF64;
 
 use crate::svgtree::{self, AId, EId};

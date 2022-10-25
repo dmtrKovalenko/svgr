@@ -5,7 +5,7 @@
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
-use svgtypes::{Length, LengthUnit as Unit};
+use svgrtypes::{Length, LengthUnit as Unit};
 
 use crate::svgtree::{self, AId, EId};
 use crate::*;

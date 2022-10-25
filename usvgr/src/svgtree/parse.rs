@@ -318,7 +318,7 @@ fn parse_svg_attribute(
     Some(match aid {
         AId::Href => {
             // `href` can contain base64 data and we do store it as is.
-            match svgtypes::IRI::from_str(value) {
+            match svgrtypes::IRI::from_str(value) {
                 Ok(link) => AttributeValue::Link(link.0.to_string()),
                 Err(_) => AttributeValue::String(value.to_string()),
             }
@@ -335,10 +335,10 @@ fn parse_svg_attribute(
                 }
                   EId::FePointLight
                 | EId::FeSpotLight => {
-                    AttributeValue::Number(svgtypes::Number::from_str(value).ok()?.0)
+                    AttributeValue::Number(svgrtypes::Number::from_str(value).ok()?.0)
                 }
                 _ => {
-                    AttributeValue::Length(svgtypes::Length::from_str(value).ok()?)
+                    AttributeValue::Length(svgrtypes::Length::from_str(value).ok()?)
                 }
             }
         }
@@ -353,16 +353,16 @@ fn parse_svg_attribute(
         | AId::Width | AId::Height
         | AId::MarkerWidth | AId::MarkerHeight
         | AId::StartOffset => {
-            AttributeValue::Length(svgtypes::Length::from_str(value).ok()?)
+            AttributeValue::Length(svgrtypes::Length::from_str(value).ok()?)
         }
 
         AId::Offset => {
             if let EId::FeFuncR | EId::FeFuncG | EId::FeFuncB | EId::FeFuncA = tag_name {
-                AttributeValue::Number(svgtypes::Number::from_str(value).ok()?.0)
+                AttributeValue::Number(svgrtypes::Number::from_str(value).ok()?.0)
             } else {
                 // offset = <number> | <percentage>
-                let l = svgtypes::Length::from_str(value).ok()?;
-                if l.unit == svgtypes::LengthUnit::None || l.unit == svgtypes::LengthUnit::Percent {
+                let l = svgrtypes::Length::from_str(value).ok()?;
+                if l.unit == svgrtypes::LengthUnit::None || l.unit == svgrtypes::LengthUnit::Percent {
                     AttributeValue::Length(l)
                 } else {
                     return None;
@@ -372,7 +372,7 @@ fn parse_svg_attribute(
 
           AId::StrokeDashoffset
         | AId::StrokeWidth => {
-            AttributeValue::Length(svgtypes::Length::from_str(value).ok()?)
+            AttributeValue::Length(svgrtypes::Length::from_str(value).ok()?)
         }
 
           AId::Opacity
@@ -380,7 +380,7 @@ fn parse_svg_attribute(
         | AId::FloodOpacity
         | AId::StrokeOpacity
         | AId::StopOpacity => {
-            let n = svgtypes::Number::from_str(value).ok()?.0;
+            let n = svgrtypes::Number::from_str(value).ok()?.0;
             AttributeValue::Opacity(Opacity::new_clamped(n))
         }
 
@@ -411,7 +411,7 @@ fn parse_svg_attribute(
         | AId::TargetX
         | AId::TargetY
         | AId::Z => {
-            AttributeValue::Number(svgtypes::Number::from_str(value).ok()?.0)
+            AttributeValue::Number(svgrtypes::Number::from_str(value).ok()?.0)
         }
 
         AId::StrokeDasharray => {
@@ -422,28 +422,28 @@ fn parse_svg_attribute(
         }
 
         AId::Fill => {
-            match svgtypes::Paint::from_str(value) {
-                Ok(svgtypes::Paint::None) => AttributeValue::None,
-                Ok(svgtypes::Paint::Inherit) => unreachable!(),
-                Ok(svgtypes::Paint::CurrentColor) => AttributeValue::CurrentColor,
-                Ok(svgtypes::Paint::Color(color)) => AttributeValue::Color(color),
-                Ok(svgtypes::Paint::FuncIRI(link, fallback)) => {
+            match svgrtypes::Paint::from_str(value) {
+                Ok(svgrtypes::Paint::None) => AttributeValue::None,
+                Ok(svgrtypes::Paint::Inherit) => unreachable!(),
+                Ok(svgrtypes::Paint::CurrentColor) => AttributeValue::CurrentColor,
+                Ok(svgrtypes::Paint::Color(color)) => AttributeValue::Color(color),
+                Ok(svgrtypes::Paint::FuncIRI(link, fallback)) => {
                     AttributeValue::Paint(link.to_string(), fallback)
                 }
                 Err(_) => {
                     log::warn!("Failed to parse fill value: '{}'. Fallback to black.", value);
-                    AttributeValue::Color(svgtypes::Color::black())
+                    AttributeValue::Color(svgrtypes::Color::black())
                 }
             }
         }
 
         AId::Stroke => {
-            match svgtypes::Paint::from_str(value).ok()? {
-                svgtypes::Paint::None => AttributeValue::None,
-                svgtypes::Paint::Inherit => unreachable!(),
-                svgtypes::Paint::CurrentColor => AttributeValue::CurrentColor,
-                svgtypes::Paint::Color(color) => AttributeValue::Color(color),
-                svgtypes::Paint::FuncIRI(link, fallback) => {
+            match svgrtypes::Paint::from_str(value).ok()? {
+                svgrtypes::Paint::None => AttributeValue::None,
+                svgrtypes::Paint::Inherit => unreachable!(),
+                svgrtypes::Paint::CurrentColor => AttributeValue::CurrentColor,
+                svgrtypes::Paint::Color(color) => AttributeValue::Color(color),
+                svgrtypes::Paint::FuncIRI(link, fallback) => {
                     AttributeValue::Paint(link.to_string(), fallback)
                 }
             }
@@ -457,14 +457,14 @@ fn parse_svg_attribute(
             match value {
                 "none" => AttributeValue::None,
                 _ => {
-                    let link = svgtypes::FuncIRI::from_str(value).ok()?;
+                    let link = svgrtypes::FuncIRI::from_str(value).ok()?;
                     AttributeValue::Link(link.0.to_string())
                 }
             }
         }
 
         AId::Color => {
-            AttributeValue::Color(svgtypes::Color::from_str(value).ok()?)
+            AttributeValue::Color(svgrtypes::Color::from_str(value).ok()?)
         }
 
           AId::FloodColor
@@ -472,7 +472,7 @@ fn parse_svg_attribute(
         | AId::StopColor => {
             match value {
                 "currentColor" => AttributeValue::CurrentColor,
-                _ => AttributeValue::Color(svgtypes::Color::from_str(value).ok()?),
+                _ => AttributeValue::Color(svgrtypes::Color::from_str(value).ok()?),
             }
         }
 
@@ -488,11 +488,11 @@ fn parse_svg_attribute(
           AId::Transform
         | AId::GradientTransform
         | AId::PatternTransform => {
-            AttributeValue::Transform(svgtypes::Transform::from_str(value).ok()?.into())
+            AttributeValue::Transform(svgrtypes::Transform::from_str(value).ok()?.into())
         }
 
         AId::FontSize => {
-            match svgtypes::Length::from_str(value) {
+            match svgrtypes::Length::from_str(value) {
                 Ok(l) => AttributeValue::Length(l),
                 Err(_) => AttributeValue::String(value.to_string()),
             }
@@ -509,30 +509,30 @@ fn parse_svg_attribute(
         | AId::WordSpacing => {
             match value {
                 "normal" => AttributeValue::String(value.to_string()),
-                _ => AttributeValue::Length(svgtypes::Length::from_str(value).ok()?),
+                _ => AttributeValue::Length(svgrtypes::Length::from_str(value).ok()?),
             }
         }
 
         AId::BaselineShift => {
             match value {
                 "baseline" | "sub" | "super" => AttributeValue::String(value.to_string()),
-                _ => AttributeValue::Length(svgtypes::Length::from_str(value).ok()?),
+                _ => AttributeValue::Length(svgrtypes::Length::from_str(value).ok()?),
             }
         }
 
         AId::Orient => {
             match value {
                 "auto" => AttributeValue::String(value.to_string()),
-                _ => AttributeValue::Angle(svgtypes::Angle::from_str(value).ok()?),
+                _ => AttributeValue::Angle(svgrtypes::Angle::from_str(value).ok()?),
             }
         }
 
         AId::ViewBox => {
-            AttributeValue::ViewBox(svgtypes::ViewBox::from_str(value).ok()?)
+            AttributeValue::ViewBox(svgrtypes::ViewBox::from_str(value).ok()?)
         }
 
         AId::PreserveAspectRatio => {
-            AttributeValue::AspectRatio(svgtypes::AspectRatio::from_str(value).ok()?)
+            AttributeValue::AspectRatio(svgrtypes::AspectRatio::from_str(value).ok()?)
         }
 
           AId::BaseFrequency
@@ -542,7 +542,7 @@ fn parse_svg_attribute(
         | AId::TableValues
         | AId::Values => {
             let mut numbers = Vec::new();
-            for n in svgtypes::NumberListParser::from(value) {
+            for n in svgrtypes::NumberListParser::from(value) {
                 numbers.push(n.ok()?);
             }
 
@@ -550,15 +550,15 @@ fn parse_svg_attribute(
         }
 
         AId::EnableBackground => {
-            let eb = svgtypes::EnableBackground::from_str(value).ok()?;
+            let eb = svgrtypes::EnableBackground::from_str(value).ok()?;
             match eb {
-                svgtypes::EnableBackground::Accumulate => {
+                svgrtypes::EnableBackground::Accumulate => {
                     return None
                 }
-                svgtypes::EnableBackground::New => {
+                svgrtypes::EnableBackground::New => {
                     AttributeValue::EnableBackground(EnableBackground(None))
                 }
-                svgtypes::EnableBackground::NewWithRegion { x, y, width, height } => {
+                svgrtypes::EnableBackground::NewWithRegion { x, y, width, height } => {
                     let r = Rect::new(x, y, width, height)?;
                     AttributeValue::EnableBackground(EnableBackground(Some(r)))
                 }
@@ -585,18 +585,18 @@ fn parse_path(text: &str) -> crate::PathData {
     let mut prev_x = 0.0;
     let mut prev_y = 0.0;
 
-    let mut prev_seg = svgtypes::PathSegment::MoveTo { abs: true, x: 0.0, y: 0.0 };
+    let mut prev_seg = svgrtypes::PathSegment::MoveTo { abs: true, x: 0.0, y: 0.0 };
 
     let mut path = crate::PathData::with_capacity(32);
 
-    for segment in svgtypes::PathParser::from(text) {
+    for segment in svgrtypes::PathParser::from(text) {
         let segment = match segment {
             Ok(v) => v,
             Err(_) => break,
         };
 
         match segment {
-            svgtypes::PathSegment::MoveTo { abs, mut x, mut y } => {
+            svgrtypes::PathSegment::MoveTo { abs, mut x, mut y } => {
                 if !abs {
                     // When we get 'm'(relative) segment, which is not first segment - then it's
                     // relative to a previous 'M'(absolute) segment, not to the first segment.
@@ -612,7 +612,7 @@ fn parse_path(text: &str) -> crate::PathData {
                 path.push_move_to(x, y);
                 prev_seg = segment;
             }
-            svgtypes::PathSegment::LineTo { abs, mut x, mut y } => {
+            svgrtypes::PathSegment::LineTo { abs, mut x, mut y } => {
                 if !abs {
                     x += prev_x;
                     y += prev_y;
@@ -621,7 +621,7 @@ fn parse_path(text: &str) -> crate::PathData {
                 path.push_line_to(x, y);
                 prev_seg = segment;
             }
-            svgtypes::PathSegment::HorizontalLineTo { abs, mut x } => {
+            svgrtypes::PathSegment::HorizontalLineTo { abs, mut x } => {
                 if !abs {
                     x += prev_x;
                 }
@@ -629,7 +629,7 @@ fn parse_path(text: &str) -> crate::PathData {
                 path.push_line_to(x, prev_y);
                 prev_seg = segment;
             }
-            svgtypes::PathSegment::VerticalLineTo { abs, mut y } => {
+            svgrtypes::PathSegment::VerticalLineTo { abs, mut y } => {
                 if !abs {
                     y += prev_y;
                 }
@@ -637,7 +637,7 @@ fn parse_path(text: &str) -> crate::PathData {
                 path.push_line_to(prev_x, y);
                 prev_seg = segment;
             }
-            svgtypes::PathSegment::CurveTo { abs, mut x1, mut y1, mut x2, mut y2, mut x, mut y } => {
+            svgrtypes::PathSegment::CurveTo { abs, mut x1, mut y1, mut x2, mut y2, mut x, mut y } => {
                 if !abs {
                     x1 += prev_x;
                     y1 += prev_y;
@@ -650,17 +650,17 @@ fn parse_path(text: &str) -> crate::PathData {
                 path.push_curve_to(x1, y1, x2, y2, x, y);
 
                 // Remember as absolute.
-                prev_seg = svgtypes::PathSegment::CurveTo { abs: true, x1, y1, x2, y2, x, y };
+                prev_seg = svgrtypes::PathSegment::CurveTo { abs: true, x1, y1, x2, y2, x, y };
             }
-            svgtypes::PathSegment::SmoothCurveTo { abs, mut x2, mut y2, mut x, mut y } => {
+            svgrtypes::PathSegment::SmoothCurveTo { abs, mut x2, mut y2, mut x, mut y } => {
                 // 'The first control point is assumed to be the reflection of the second control
                 // point on the previous command relative to the current point.
                 // (If there is no previous command or if the previous command
                 // was not an C, c, S or s, assume the first control point is
                 // coincident with the current point.)'
                 let (x1, y1) = match prev_seg {
-                    svgtypes::PathSegment::CurveTo { x2, y2, x, y, .. } |
-                    svgtypes::PathSegment::SmoothCurveTo { x2, y2, x, y, .. } => {
+                    svgrtypes::PathSegment::CurveTo { x2, y2, x, y, .. } |
+                    svgrtypes::PathSegment::SmoothCurveTo { x2, y2, x, y, .. } => {
                         (x * 2.0 - x2, y * 2.0 - y2)
                     }
                     _ => {
@@ -678,9 +678,9 @@ fn parse_path(text: &str) -> crate::PathData {
                 path.push_curve_to(x1, y1, x2, y2, x, y);
 
                 // Remember as absolute.
-                prev_seg = svgtypes::PathSegment::SmoothCurveTo { abs: true, x2, y2, x, y };
+                prev_seg = svgrtypes::PathSegment::SmoothCurveTo { abs: true, x2, y2, x, y };
             }
-            svgtypes::PathSegment::Quadratic { abs, mut x1, mut y1, mut x, mut y } => {
+            svgrtypes::PathSegment::Quadratic { abs, mut x1, mut y1, mut x, mut y } => {
                 if !abs {
                     x1 += prev_x;
                     y1 += prev_y;
@@ -691,19 +691,19 @@ fn parse_path(text: &str) -> crate::PathData {
                 path.push_quad_to(x1, y1, x, y);
 
                 // Remember as absolute.
-                prev_seg = svgtypes::PathSegment::Quadratic { abs: true, x1, y1, x, y };
+                prev_seg = svgrtypes::PathSegment::Quadratic { abs: true, x1, y1, x, y };
             }
-            svgtypes::PathSegment::SmoothQuadratic { abs, mut x, mut y } => {
+            svgrtypes::PathSegment::SmoothQuadratic { abs, mut x, mut y } => {
                 // 'The control point is assumed to be the reflection of
                 // the control point on the previous command relative to
                 // the current point. (If there is no previous command or
                 // if the previous command was not a Q, q, T or t, assume
                 // the control point is coincident with the current point.)'
                 let (x1, y1) = match prev_seg {
-                    svgtypes::PathSegment::Quadratic { x1, y1, x, y, .. } => {
+                    svgrtypes::PathSegment::Quadratic { x1, y1, x, y, .. } => {
                         (x * 2.0 - x1, y * 2.0 - y1)
                     }
-                    svgtypes::PathSegment::SmoothQuadratic { x, y, .. } => {
+                    svgrtypes::PathSegment::SmoothQuadratic { x, y, .. } => {
                         (x * 2.0 - prev_tx, y * 2.0 - prev_ty)
                     }
                     _ => {
@@ -722,9 +722,9 @@ fn parse_path(text: &str) -> crate::PathData {
                 path.push_quad_to(x1, y1, x, y);
 
                 // Remember as absolute.
-                prev_seg = svgtypes::PathSegment::SmoothQuadratic { abs: true, x, y };
+                prev_seg = svgrtypes::PathSegment::SmoothQuadratic { abs: true, x, y };
             }
-            svgtypes::PathSegment::EllipticalArc {
+            svgrtypes::PathSegment::EllipticalArc {
                 abs, rx, ry, x_axis_rotation, large_arc, sweep, mut x, mut y
             } => {
                 if !abs {
@@ -735,7 +735,7 @@ fn parse_path(text: &str) -> crate::PathData {
                 path.push_arc_to(rx, ry, x_axis_rotation, large_arc, sweep, x, y);
                 prev_seg = segment;
             }
-            svgtypes::PathSegment::ClosePath { .. } => {
+            svgrtypes::PathSegment::ClosePath { .. } => {
                 if let Some(crate::PathSegment::ClosePath) = path.last() {
                     // Do not add sequential ClosePath segments.
                     // Otherwise it will break marker rendering.
@@ -872,7 +872,7 @@ fn resolve_href<'a>(
     let link_value = node.attribute((XLINK_NS, "href"))
         .or_else(|| node.attribute("href"))?;
 
-    let link_id = svgtypes::IRI::from_str(link_value).ok()?.0;
+    let link_id = svgrtypes::IRI::from_str(link_value).ok()?.0;
 
     // We're using `descendants` each time instead of HashTable because
     // we have to preserve the original elements order.

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use svgtypes::{Length, LengthUnit as Unit};
+use svgrtypes::{Length, LengthUnit as Unit};
 use strict_num::PositiveF64;
 
 use crate::svgtree::{self, AId, EId};
@@ -435,13 +435,13 @@ fn convert_stops(grad: svgtree::Node) -> Vec<Stop> {
 
             let (color, opacity) = match stop.attribute(AId::StopColor) {
                 Some(&svgtree::AttributeValue::CurrentColor) => {
-                    stop.find_attribute(AId::Color).unwrap_or_else(svgtypes::Color::black)
+                    stop.find_attribute(AId::Color).unwrap_or_else(svgrtypes::Color::black)
                 }
                 Some(&svgtree::AttributeValue::Color(c)) => {
                     c
                 }
                 _ => {
-                    svgtypes::Color::black()
+                    svgrtypes::Color::black()
                 }
             }.split_alpha();
 

@@ -28,7 +28,7 @@ xmlwriter = { version = "0.1", optional = true }
 roxmltree = "0.14"
 simplecss = "0.2"
 siphasher = "0.3"
-svgtypes = "0.8"
+svgrtypes =  { path = "../svgrtypes", version = "0.8.2" }
 
 # for text to path
 fontdb = { version = "0.9", optional = true, default-features = false }

@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 
-use svgtypes::{Length, LengthUnit as Unit};
+use svgrtypes::{Length, LengthUnit as Unit};
 
 use crate::{Color, NodeKind, Opacity, OptionLog, Rect, Tree, Units, converter};
 use crate::paint_server::{resolve_number, convert_units};
@@ -236,7 +236,7 @@ pub(crate) fn convert(
         }));
     };
 
-    for func in svgtypes::FilterValueListParser::from(value) {
+    for func in svgrtypes::FilterValueListParser::from(value) {
         let func = match func {
             Ok(v) => v,
             Err(e) => {
@@ -247,41 +247,41 @@ pub(crate) fn convert(
         };
 
         match func {
-            svgtypes::FilterValue::Blur(std_dev) => {
+            svgrtypes::FilterValue::Blur(std_dev) => {
                 create_base_filter_func(funcs::convert_blur(node, std_dev, state), &mut ids, tree)
             }
-            svgtypes::FilterValue::DropShadow { color, dx, dy, std_dev } => {
+            svgrtypes::FilterValue::DropShadow { color, dx, dy, std_dev } => {
                 create_base_filter_func(
                     funcs::convert_drop_shadow(node, color, dx, dy, std_dev, state),
                     &mut ids,
                     tree,
                 )
             }
-            svgtypes::FilterValue::Brightness(amount) => {
+            svgrtypes::FilterValue::Brightness(amount) => {
                 create_base_filter_func(funcs::convert_brightness(amount), &mut ids, tree)
             }
-            svgtypes::FilterValue::Contrast(amount) => {
+            svgrtypes::FilterValue::Contrast(amount) => {
                 create_base_filter_func(funcs::convert_contrast(amount), &mut ids, tree)
             }
-            svgtypes::FilterValue::Grayscale(amount) => {
+            svgrtypes::FilterValue::Grayscale(amount) => {
                 create_base_filter_func(funcs::convert_grayscale(amount), &mut ids, tree)
             }
-            svgtypes::FilterValue::HueRotate(angle) => {
+            svgrtypes::FilterValue::HueRotate(angle) => {
                 create_base_filter_func(funcs::convert_hue_rotate(angle), &mut ids, tree)
             }
-            svgtypes::FilterValue::Invert(amount) => {
+            svgrtypes::FilterValue::Invert(amount) => {
                 create_base_filter_func(funcs::convert_invert(amount), &mut ids, tree)
             }
-            svgtypes::FilterValue::Opacity(amount) => {
+            svgrtypes::FilterValue::Opacity(amount) => {
                 create_base_filter_func(funcs::convert_opacity(amount), &mut ids, tree)
             }
-            svgtypes::FilterValue::Sepia(amount) => {
+            svgrtypes::FilterValue::Sepia(amount) => {
                 create_base_filter_func(funcs::convert_sepia(amount), &mut ids, tree)
             }
-            svgtypes::FilterValue::Saturate(amount) => {
+            svgrtypes::FilterValue::Saturate(amount) => {
                 create_base_filter_func(funcs::convert_saturate(amount), &mut ids, tree)
             }
-            svgtypes::FilterValue::Url(url) => {
+            svgrtypes::FilterValue::Url(url) => {
                 if let Some(link) = node.document().element_by_id(url) {
                     if let Ok(res) = convert_url(link, state, tree) {
                         if let Some(id) = res {
