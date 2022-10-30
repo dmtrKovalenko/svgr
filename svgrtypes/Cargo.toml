@@ -1,0 +1,15 @@
+[package]
+name = "svgrtypes"
+version = "0.8.2"
+authors = ["Yevhenii Reizner <razrfalcon@gmail.com>"]
+categories = ["parser-implementations"]
+description = "SVG types parser."
+documentation = "https://docs.rs/svgrtypes/"
+keywords = ["svg", "parser", "tokenizer"]
+license = "MIT/Apache-2.0"
+edition = "2018"
+readme = "README.md"
+repository = "https://github.com/RazrFalcon/svgrtypes"
+
+[dependencies]
+siphasher = "0.3"

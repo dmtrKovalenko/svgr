@@ -4,13 +4,10 @@
 
 #![allow(missing_debug_implementations)]
 
-use std::borrow::BorrowMut;
-use std::collections::HashMap;
-
-
 use crate::geom::{FuzzyEq, Rect, Transform};
 use crate::{converter, units};
 use crate::{EnableBackground, Opacity, OptionsRef, SharedPathData, Units};
+use std::collections::HashMap;
 
 mod names;
 mod parse;
