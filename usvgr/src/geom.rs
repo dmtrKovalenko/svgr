@@ -3,8 +3,6 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use strict_num::ApproxEqUlps;
-use svgrtypes::Length;
-
 use crate::{Align, AspectRatio};
 
 /// A trait for fuzzy/approximate equality comparisons of float numbers.
