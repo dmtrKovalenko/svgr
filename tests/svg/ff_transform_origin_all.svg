@@ -1,12 +1,12 @@
 <svg id="svg1" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-    <title>`rotate(angle)`</title>
+    <title>`skew(angle)`</title>
 
     <rect 
-        transform="translate(100 100) rotate(45) translate(-100 -100)"
+        transform="translate(0 100) rotate(-5) scale(1.5) skewX(20) skewY(10) translate(0 -100)"
         id="rect0" x="0" y="0" width="120" height="120"
         fill="red"
     />
-    <rect transform="rotate(45)" transform-origin="center center" id="rect1" x="0" y="0" width="120" height="120"
+    <rect transform="rotate(-5) scale(1.5) skewX(20) skewY(10)" transform-origin="center left" id="rect1" x="0" y="0" width="120" height="120"
         fill="green" />
 
     <!-- image frame -->

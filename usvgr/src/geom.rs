@@ -977,6 +977,11 @@ impl Transform {
         self.append(&Transform::new_translate(x, y));
     }
 
+    #[inline]
+    pub(crate) fn pre_translate(&mut self, x: f64, y: f64) {
+        self.prepend(&Transform::new_translate(x, y));
+    }
+
     /// Scales the current transform.
     #[inline]
     pub fn scale(&mut self, sx: f64, sy: f64) {

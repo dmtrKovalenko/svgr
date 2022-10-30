@@ -32,8 +32,7 @@ impl Document {
         let last_child_id = self.nodes[parent_id.0].children.map(|(_, id)| id);
         self.nodes[new_child_id.0].prev_sibling = last_child_id;
 
-        if let Some(id) = last_child_id {
-            self.nodes[id.0].next_sibling = Some(new_child_id);
+        if let Some(id) = last_child_id { self.nodes[id.0].next_sibling = Some(new_child_id);
         }
 
         self.nodes[parent_id.0].children = Some(
@@ -489,6 +488,10 @@ fn parse_svg_attribute(
         | AId::GradientTransform
         | AId::PatternTransform => {
             AttributeValue::Transform(svgrtypes::Transform::from_str(value).ok()?.into())
+        }
+
+        AId::TransformOrigin => {
+            AttributeValue::TransformOrigin(svgrtypes::TransformOrigin::from_str(value).ok()?)
         }
 
         AId::FontSize => {
