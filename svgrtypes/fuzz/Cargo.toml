@@ -1,5 +1,5 @@
 [package]
-name = "svgtypes-fuzz"
+name = "svgrtypes-fuzz"
 version = "0.0.1"
 authors = ["Automatically generated"]
 publish = false
@@ -7,7 +7,7 @@ publish = false
 [package.metadata]
 cargo-fuzz = true
 
-[dependencies.svgtypes]
+[dependencies.svgrtypes]
 path = ".."
 
 [dependencies.libfuzzer-sys]

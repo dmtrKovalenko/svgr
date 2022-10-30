@@ -3,8 +3,6 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use strict_num::ApproxEqUlps;
-use svgrtypes::Length;
-
 use crate::{Align, AspectRatio};
 
 /// A trait for fuzzy/approximate equality comparisons of float numbers.
@@ -1015,6 +1013,11 @@ impl Transform {
     #[inline]
     pub fn translate(&mut self, x: f64, y: f64) {
         self.append(&Transform::new_translate(x, y));
+    }
+
+    #[inline]
+    pub(crate) fn pre_translate(&mut self, x: f64, y: f64) {
+        self.prepend(&Transform::new_translate(x, y));
     }
 
     /// Scales the current transform.

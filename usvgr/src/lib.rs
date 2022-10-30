@@ -536,7 +536,7 @@ pub type Node = rctree::Node<NodeKind>;
 // TODO: impl a Debug
 /// A nodes tree container.
 #[allow(missing_debug_implementations)]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Tree {
     root: Node,
 }
@@ -630,13 +630,7 @@ impl Tree {
 
     /// Returns `defs` child node by ID.
     pub fn defs_by_id(&self, id: &str) -> Option<Node> {
-        for n in self.defs().children() {
-            if &*n.id() == id {
-                return Some(n);
-            }
-        }
-
-        None
+        self.defs().children().find(|n| &*n.id() == id)
     }
 
     /// Returns renderable node by ID.
@@ -648,13 +642,9 @@ impl Tree {
             return None;
         }
 
-        for node in self.root().descendants() {
-            if !self.is_in_defs(&node) && &*node.id() == id {
-                return Some(node);
-            }
-        }
-
-        None
+        self.root()
+            .descendants()
+            .find(|node| !self.is_in_defs(&node) && &*node.id() == id)
     }
 
     #[inline]
@@ -820,7 +810,7 @@ fn calc_node_bbox(node: &Node, ts: Transform) -> Option<PathBbox> {
             let mut bbox = PathBbox::new_bbox();
 
             for child in node.children() {
-                let mut child_transform = ts.clone();
+                let mut child_transform = ts;
                 child_transform.append(&child.transform());
                 if let Some(c_bbox) = calc_node_bbox(&child, child_transform) {
                     bbox = bbox.expand(c_bbox);

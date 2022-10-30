@@ -123,6 +123,7 @@ text-anchor
 text-decoration
 text-rendering
 transform
+transform-origin
 type
 values
 viewBox
