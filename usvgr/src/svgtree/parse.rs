@@ -494,6 +494,10 @@ fn parse_svg_attribute(
             AttributeValue::TransformOrigin(svgrtypes::TransformOrigin::from_str(value).ok()?)
         }
 
+        // | AId::TransformOrigin => {
+        //     AttributeValue::TransformOrigin(crate::TransformOrigin::from_str(value).ok()?.into())
+        // }
+
         AId::FontSize => {
             match svgrtypes::Length::from_str(value) {
                 Ok(l) => AttributeValue::Length(l),
