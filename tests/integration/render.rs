@@ -1469,4 +1469,6 @@ fn ff_image_no_width() {
 #[test]fn ff_transform_origin_skew() { assert_eq!(render("ff_transform_origin_skew"), 0); }
 #[test]fn ff_transform_origin_all() { assert_eq!(render("ff_transform_origin_all"), 0); }
 #[test]fn ff_transform_origin_text() { assert_eq!(render("ff_transform_origin_text"), 0); }
+#[test]fn ff_transform_origin_text_units() { assert_eq!(render("ff_transform_origin_text_units"), 0); }
+#[test]fn ff_transform_origin_image() { assert_eq!(render("ff_transform_origin_image"), 0); }
 

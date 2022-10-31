@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::{render::Canvas, ConvTransform};
+use crate::render::Canvas;
 
 pub fn draw(image: &usvgr::Image, canvas: &mut Canvas) -> usvgr::PathBbox {
     if image.visibility != usvgr::Visibility::Visible {

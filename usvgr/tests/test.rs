@@ -102,7 +102,7 @@ macro_rules! test_size {
             use usvgr::FuzzyEq;
             let opt = usvgr::Options::default();
             let tree = usvgr::Tree::from_str($input, &opt.to_ref()).unwrap();
-            assert!(tree.svg_node().size.fuzzy_eq(&$expected));
+            assert!(tree.size.fuzzy_eq(&$expected));
         }
     };
 }

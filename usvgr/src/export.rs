@@ -920,17 +920,8 @@ impl XmlWriterExt for XmlWriter {
         self.end_element();
     }
 
-    fn write_image_data(&mut self, kind: &crate::ImageKind) {
-        let svg_string;
-        let (mime, data) = match kind {
-            crate::ImageKind::JPEG(ref data) => ("jpg", data.as_slice()),
-            crate::ImageKind::PNG(ref data) => ("png", data.as_slice()),
-            crate::ImageKind::GIF(ref data) => ("gif", data.as_slice()),
-            crate::ImageKind::SVG(ref tree) => {
-                svg_string = tree.to_string(&XmlOptions::default());
-                ("svg+xml", svg_string.as_bytes())
-            }
-        };
+    fn write_image_data(&mut self, kind: &Arc<crate::PreloadedImageData>) {
+        let data = kind.data.as_slice();
 
         self.write_attribute_raw("xlink:href", |buf| {
             buf.extend_from_slice(b"data:image/");

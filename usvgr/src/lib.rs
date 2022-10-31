@@ -595,6 +595,7 @@ impl Tree {
 
     #[inline]
     #[cfg(feature = "export")]
+    /// Exports the tree to an SVG string. String is formatted.
     pub fn to_string(&self, opt: &XmlOptions) -> String {
         crate::export::convert(self, opt)
     }

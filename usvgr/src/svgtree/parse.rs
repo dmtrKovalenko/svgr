@@ -426,16 +426,6 @@ fn parse_svg_attribute(tag_name: EId, aid: AId, value: &str) -> Option<Attribute
             _ => AttributeValue::String(value.to_string()),
         },
 
-        AId::Fill => match svgrtypes::Paint::from_str(value).ok()? {
-            svgrtypes::Paint::None => AttributeValue::None,
-            svgrtypes::Paint::Inherit => unreachable!(),
-            svgrtypes::Paint::CurrentColor => AttributeValue::CurrentColor,
-            svgrtypes::Paint::Color(color) => AttributeValue::Color(color),
-            svgrtypes::Paint::FuncIRI(link, fallback) => {
-                AttributeValue::Paint(link.to_string(), fallback)
-            }
-        },
-
         AId::Fill => match svgrtypes::Paint::from_str(value) {
             Ok(svgrtypes::Paint::None) => AttributeValue::None,
             Ok(svgrtypes::Paint::Inherit) => unreachable!(),
