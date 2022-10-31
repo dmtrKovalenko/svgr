@@ -5,16 +5,16 @@
 use std::rc::Rc;
 
 mod convert;
-mod shaper;
 mod fontdb_ext;
+mod shaper;
 
-use crate::{FillRule, Group, Node, NodeExt, NodeKind, Paint, Path, PathData, PathSegment, Rect, Color};
-use crate::{ShapeRendering, Stroke, StrokeWidth, Transform, TransformFromBBox, Tree, Units};
-use crate::PathBbox;
 use crate::{converter, svgtree};
-use convert::{TextFlow, WritingMode, TextSpan};
-use shaper::OutlinedCluster;
+use crate::{BaseGradient, Color, LinearGradient, Pattern, RadialGradient};
+use crate::{FillRule, Group, Node, NodeExt, NodeKind, Paint, Path, PathBbox, PathData, Rect};
+use crate::{ShapeRendering, Stroke, StrokeWidth, Transform, TransformFromBBox, Units};
 use convert::TextDecorationStyle;
+use convert::{TextFlow, TextSpan, WritingMode};
+use shaper::OutlinedCluster;
 
 mod private {
     use crate::svgtree::{self, EId};
@@ -42,7 +42,6 @@ mod private {
 }
 use private::TextNode;
 
-
 /// A text decoration span.
 ///
 /// Basically a horizontal line, that will be used for underline, overline and line-through.
@@ -53,16 +52,14 @@ struct DecorationSpan {
     transform: Transform,
 }
 
-
 pub(crate) fn convert(
     node: svgtree::Node,
     state: &converter::State,
-    id_generator: &mut converter::NodeIdGenerator,
+    cache: &mut converter::Cache,
     parent: &mut Node,
-    tree: &mut Tree,
 ) {
     let text_node = TextNode::new(node);
-    let (mut new_paths, bbox) = text_to_paths(text_node, state, id_generator, parent, tree);
+    let (mut new_paths, bbox) = text_to_paths(text_node, state, cache, parent);
 
     if new_paths.len() == 1 {
         // Copy `text` id to the first path.
@@ -81,7 +78,7 @@ pub(crate) fn convert(
 
     let rendering_mode = convert::resolve_rendering_mode(text_node, state);
     for mut path in new_paths {
-        fix_obj_bounding_box(&mut path, bbox, tree);
+        fix_obj_bounding_box(&mut path, bbox);
         path.rendering_mode = rendering_mode;
         parent.append_kind(NodeKind::Path(path));
     }
@@ -90,13 +87,16 @@ pub(crate) fn convert(
 fn text_to_paths(
     text_node: TextNode,
     state: &converter::State,
-    id_generator: &mut converter::NodeIdGenerator,
+    cache: &mut converter::Cache,
     parent: &mut Node,
-    tree: &mut Tree,
 ) -> (Vec<Path>, PathBbox) {
     let abs_ts = {
         let mut ts = parent.abs_transform();
-        ts.append(&text_node.attribute(svgtree::AId::Transform).unwrap_or_default());
+        ts.append(
+            &text_node
+                .attribute(svgtree::AId::Transform)
+                .unwrap_or_default(),
+        );
         ts
     };
 
@@ -105,7 +105,7 @@ fn text_to_paths(
     let writing_mode = convert::convert_writing_mode(text_node);
 
     let mut bbox = PathBbox::new_bbox();
-    let mut chunks = convert::collect_text_chunks(text_node, &pos_list, state, id_generator, tree);
+    let mut chunks = convert::collect_text_chunks(text_node, &pos_list, state, cache);
     let mut char_offset = 0;
     let mut last_x = 0.0;
     let mut last_y = 0.0;
@@ -126,7 +126,13 @@ fn text_to_paths(
         shaper::apply_letter_spacing(chunk, &mut clusters);
         shaper::apply_word_spacing(chunk, &mut clusters);
         let mut curr_pos = shaper::resolve_clusters_positions(
-            chunk, char_offset, &pos_list, &rotate_list, writing_mode, abs_ts, &mut clusters
+            chunk,
+            char_offset,
+            &pos_list,
+            &rotate_list,
+            writing_mode,
+            abs_ts,
+            &mut clusters,
         );
 
         let mut text_ts = Transform::default();
@@ -158,9 +164,7 @@ fn text_to_paths(
                     WritingMode::TopToBottom => span.font.height(span.font_size.get()) / 2.0,
                 };
 
-                let path = convert_decoration(
-                    offset, span, decoration, &decoration_spans, span_ts,
-                );
+                let path = convert_decoration(offset, span, decoration, &decoration_spans, span_ts);
 
                 if let Some(r) = path.data.bbox() {
                     bbox = bbox.expand(r);
@@ -175,9 +179,7 @@ fn text_to_paths(
                     WritingMode::TopToBottom => -span.font.height(span.font_size.get()) / 2.0,
                 };
 
-                let path = convert_decoration(
-                    offset, span, decoration, &decoration_spans, span_ts,
-                );
+                let path = convert_decoration(offset, span, decoration, &decoration_spans, span_ts);
 
                 if let Some(r) = path.data.bbox() {
                     bbox = bbox.expand(r);
@@ -197,13 +199,13 @@ fn text_to_paths(
 
             if let Some(decoration) = span.decoration.line_through.take() {
                 let offset = match writing_mode {
-                    WritingMode::LeftToRight => -span.font.line_through_position(span.font_size.get()),
+                    WritingMode::LeftToRight => {
+                        -span.font.line_through_position(span.font_size.get())
+                    }
                     WritingMode::TopToBottom => 0.0,
                 };
 
-                let path = convert_decoration(
-                    offset, span, decoration, &decoration_spans, span_ts,
-                );
+                let path = convert_decoration(offset, span, decoration, &decoration_spans, span_ts);
 
                 if let Some(r) = path.data.bbox() {
                     bbox = bbox.expand(r);
@@ -253,7 +255,7 @@ fn convert_span(
             let mut path = std::mem::replace(&mut cluster.path, PathData::new());
             path.transform(cluster.transform);
 
-            path_data.extend_from_slice(&path);
+            path_data.push_path(&path);
 
             // We have to calculate text bbox using font metrics and not glyph shape.
             if let Some(r) = Rect::new(0.0, -cluster.ascent, cluster.advance, cluster.height()) {
@@ -287,6 +289,7 @@ fn convert_span(
         visibility: span.visibility,
         fill,
         stroke: span.stroke.take(),
+        paint_order: span.paint_order,
         rendering_mode: ShapeRendering::default(),
         text_bbox: bboxes_data.bbox().and_then(|r| r.to_rect()),
         data: Rc::new(path_data),
@@ -296,22 +299,18 @@ fn convert_span(
 }
 
 // Only for debug purposes.
-fn dump_cluster(
-    cluster: &OutlinedCluster,
-    text_ts: Transform,
-    parent: &mut Node,
-) {
+fn dump_cluster(cluster: &OutlinedCluster, text_ts: Transform, parent: &mut Node) {
     fn new_stroke(color: Color) -> Option<Stroke> {
         Some(Stroke {
             paint: Paint::Color(color),
             width: StrokeWidth::new(0.2).unwrap(),
-            .. Stroke::default()
+            ..Stroke::default()
         })
     }
 
     let mut base_path = Path {
         transform: text_ts,
-        .. Path::default()
+        ..Path::default()
     };
 
     // Cluster bbox.
@@ -322,17 +321,16 @@ fn dump_cluster(
 
     // Baseline.
     base_path.stroke = new_stroke(Color::new_rgb(255, 0, 0));
-    base_path.data = Rc::new(PathData(vec![
-        PathSegment::MoveTo { x: 0.0,             y: 0.0 },
-        PathSegment::LineTo { x: cluster.advance, y: 0.0 },
-    ]));
+
+    let mut path = PathData::new();
+    path.push_move_to(0.0, 0.0);
+    path.push_line_to(cluster.advance, 0.0);
+
+    base_path.data = Rc::new(path);
     parent.append_kind(NodeKind::Path(base_path));
 }
 
-fn collect_decoration_spans(
-    span: &TextSpan,
-    clusters: &[OutlinedCluster],
-) -> Vec<DecorationSpan> {
+fn collect_decoration_spans(span: &TextSpan, clusters: &[OutlinedCluster]) -> Vec<DecorationSpan> {
     let mut spans = Vec::new();
 
     let mut started = false;
@@ -378,12 +376,7 @@ fn convert_decoration(
 
     let mut path = PathData::new();
     for dec_span in decoration_spans {
-        let rect = Rect::new(
-            0.0,
-            -thickness / 2.0,
-            dec_span.width,
-            thickness,
-        ).unwrap();
+        let rect = Rect::new(0.0, -thickness / 2.0, dec_span.width, thickness).unwrap();
 
         let start_idx = path.len();
         path.push_rect(rect);
@@ -400,31 +393,23 @@ fn convert_decoration(
         fill: decoration.fill.take(),
         stroke: decoration.stroke.take(),
         data: Rc::new(path),
-        .. Path::default()
+        ..Path::default()
     }
 }
 
 /// By the SVG spec, `tspan` doesn't have a bbox and uses the parent `text` bbox.
 /// Since we converted `text` and `tspan` to `path`, we have to update
 /// all linked paint servers (gradients and patterns) too.
-fn fix_obj_bounding_box(
-    path: &mut Path,
-    bbox: PathBbox,
-    tree: &mut Tree,
-) {
+fn fix_obj_bounding_box(path: &mut Path, bbox: PathBbox) {
     if let Some(ref mut fill) = path.fill {
-        if let Paint::Link(ref mut id) = fill.paint {
-            if let Some(new_id) = paint_server_to_user_space_on_use(id, bbox, tree) {
-                *id = new_id;
-            }
+        if let Some(new_paint) = paint_server_to_user_space_on_use(fill.paint.clone(), bbox) {
+            fill.paint = new_paint;
         }
     }
 
     if let Some(ref mut stroke) = path.stroke {
-        if let Paint::Link(ref mut id) = stroke.paint {
-            if let Some(new_id) = paint_server_to_user_space_on_use(id, bbox, tree) {
-                *id = new_id;
-            }
+        if let Some(new_paint) = paint_server_to_user_space_on_use(stroke.paint.clone(), bbox) {
+            stroke.paint = new_paint;
         }
     }
 }
@@ -434,61 +419,68 @@ fn fix_obj_bounding_box(
 /// Creates a deep copy of a selected paint server and returns its ID.
 ///
 /// Returns `None` if a paint server already uses `UserSpaceOnUse`.
-fn paint_server_to_user_space_on_use(
-    id: &str,
-    bbox: PathBbox,
-    tree: &mut Tree,
-) -> Option<String> {
-    if let Some(mut ps) = tree.defs_by_id(id) {
-        if ps.units() != Some(Units::ObjectBoundingBox) {
-            return None;
-        }
-
-        // TODO: is `pattern` copying safe? Maybe we should reset id's on all `pattern` children.
-        // We have to clone a paint server, in case some other element is already using it.
-        // If not, the `convert` module will remove unused defs anyway.
-        let mut new_ps = ps.make_deep_copy();
-        tree.defs().append(new_ps.clone());
-
-        let new_id = gen_paint_server_id(tree);
-
-        // Update id, transform and units.
-        let ts = Transform::from_bbox(bbox.to_rect()?);
-        match *new_ps.borrow_mut() {
-            NodeKind::LinearGradient(ref mut lg) => {
-                lg.id = new_id.clone();
-                lg.base.transform.prepend(&ts);
-                lg.base.units = Units::UserSpaceOnUse;
-            }
-            NodeKind::RadialGradient(ref mut rg) => {
-                rg.id = new_id.clone();
-                rg.base.transform.prepend(&ts);
-                rg.base.units = Units::UserSpaceOnUse;
-            }
-            NodeKind::Pattern(ref mut patt) => {
-                patt.id = new_id.clone();
-                patt.transform.prepend(&ts);
-                patt.units = Units::UserSpaceOnUse;
-            }
-            _ => {}
-        }
-
-        Some(new_id)
-    } else {
-        None
-    }
-}
-
-/// Creates a free id for a paint server.
-fn gen_paint_server_id(tree: &Tree) -> String {
-    // TODO: speed up
-
-    let mut idx = 1;
-    let mut id = format!("usvgr{}", idx);
-    while tree.defs().children().any(|n| *n.id() == id) {
-        idx += 1;
-        id = format!("usvgr{}", idx);
+fn paint_server_to_user_space_on_use(paint: Paint, bbox: PathBbox) -> Option<Paint> {
+    if paint.units() != Some(Units::ObjectBoundingBox) {
+        return None;
     }
 
-    id
+    // TODO: is `pattern` copying safe? Maybe we should reset id's on all `pattern` children.
+    // We have to clone a paint server, in case some other element is already using it.
+    // If not, the `convert` module will remove unused defs anyway.
+
+    // Update id, transform and units.
+    let ts = Transform::from_bbox(bbox.to_rect()?);
+    let paint = match paint {
+        Paint::Color(_) => paint,
+        Paint::LinearGradient(ref lg) => {
+            let mut transform = lg.transform;
+            transform.prepend(&ts);
+            Paint::LinearGradient(Rc::new(LinearGradient {
+                id: String::new(),
+                x1: lg.x1,
+                y1: lg.y1,
+                x2: lg.x2,
+                y2: lg.y2,
+                base: BaseGradient {
+                    units: Units::UserSpaceOnUse,
+                    transform,
+                    spread_method: lg.spread_method,
+                    stops: lg.stops.clone(),
+                },
+            }))
+        }
+        Paint::RadialGradient(ref rg) => {
+            let mut transform = rg.transform;
+            transform.prepend(&ts);
+            Paint::RadialGradient(Rc::new(RadialGradient {
+                id: String::new(),
+                cx: rg.cx,
+                cy: rg.cy,
+                r: rg.r,
+                fx: rg.fx,
+                fy: rg.fy,
+                base: BaseGradient {
+                    units: Units::UserSpaceOnUse,
+                    transform,
+                    spread_method: rg.spread_method,
+                    stops: rg.stops.clone(),
+                },
+            }))
+        }
+        Paint::Pattern(ref patt) => {
+            let mut transform = patt.transform;
+            transform.prepend(&ts);
+            Paint::Pattern(Rc::new(Pattern {
+                id: String::new(),
+                units: Units::UserSpaceOnUse,
+                content_units: patt.content_units,
+                transform: transform,
+                rect: patt.rect,
+                view_box: patt.view_box,
+                root: patt.root.clone().make_deep_copy(),
+            }))
+        }
+    };
+
+    Some(paint)
 }

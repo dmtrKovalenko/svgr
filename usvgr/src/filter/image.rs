@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use super::Kind;
 use crate::svgtree::{self, AId};
-use crate::{converter, image, AspectRatio, ImageRendering};
+use crate::{converter, AspectRatio, Group, ImageRendering, Node, NodeKind, image};
 
 /// An image filter primitive.
 ///
@@ -31,30 +31,38 @@ pub enum ImageKind {
     /// An image data.
     Image(Arc<image::PreloadedImageData>),
 
-    /// A reference to an SVG object.
+    /// An SVG node.
     ///
-    /// `feImage` can reference any SVG object, just like `use` element.
-    Use(String),
+    /// Isn't inside a dummy group like clip, mask and pattern because
+    /// `feImage` can reference only a single element.
+    Use(Node),
 }
 
-pub(crate) fn convert(fe: svgtree::Node, state: &converter::State) -> Kind {
+pub(crate) fn convert(
+    fe: svgtree::Node,
+    state: &converter::State,
+    cache: &mut converter::Cache,
+) -> Kind {
     let aspect = fe.attribute(AId::PreserveAspectRatio).unwrap_or_default();
     let rendering_mode = fe
         .find_attribute(AId::ImageRendering)
         .unwrap_or(state.opt.image_rendering);
 
     if let Some(node) = fe.attribute::<svgtree::Node>(AId::Href) {
-        // If `feImage` references an existing SVG element,
-        // simply store its ID and do not attempt to convert the element itself.
-        // The problem is that `feImage` can reference an element outside `defs`,
-        // and we should not create it manually.
-        // Instead, after document conversion is finished, we should search for this ID
-        // and if it does not exist - create it inside `defs`.
-        return Kind::Image(Image {
-            aspect,
-            rendering_mode,
-            data: ImageKind::Use(node.element_id().to_string()),
-        });
+        let mut state = state.clone();
+        state.fe_image_link = true;
+        let mut root = Node::new(NodeKind::Group(Group::default()));
+        crate::converter::convert_element(node, &state, cache, &mut root);
+        return if let Some(node) = root.first_child() {
+            node.detach(); // drops `root` node
+            Kind::Image(Image {
+                aspect,
+                rendering_mode,
+                data: ImageKind::Use(node),
+            })
+        } else {
+            super::create_dummy_primitive()
+        };
     }
 
     let href = match fe.attribute(AId::Href) {

@@ -2,8 +2,7 @@
 
 #![allow(non_snake_case)]
 
-mod render;
-use render::render;
+use crate::render;
 
 #[test]fn a_alignment_baseline_001() { assert_eq!(render("a-alignment-baseline-001"), 0); }
 #[test]fn a_baseline_shift_001() { assert_eq!(render("a-baseline-shift-001"), 0); }
@@ -1470,4 +1469,6 @@ fn ff_image_no_width() {
 #[test]fn ff_transform_origin_skew() { assert_eq!(render("ff_transform_origin_skew"), 0); }
 #[test]fn ff_transform_origin_all() { assert_eq!(render("ff_transform_origin_all"), 0); }
 #[test]fn ff_transform_origin_text() { assert_eq!(render("ff_transform_origin_text"), 0); }
+#[test]fn ff_transform_origin_text_units() { assert_eq!(render("ff_transform_origin_text_units"), 0); }
+#[test]fn ff_transform_origin_image() { assert_eq!(render("ff_transform_origin_image"), 0); }
 

@@ -9,7 +9,7 @@ use crate::{converter, units};
 use crate::{EnableBackground, Opacity, OptionsRef, SharedPathData, Units};
 use std::collections::HashMap;
 
-mod names;
+#[rustfmt::skip] mod names;
 mod parse;
 #[cfg(feature = "text")]
 mod text;
@@ -162,6 +162,7 @@ pub enum AttributeValue {
     Transform(Transform),
     TransformOrigin(svgrtypes::TransformOrigin),
     ViewBox(svgrtypes::ViewBox),
+    PaintOrder(svgrtypes::PaintOrder),
 }
 
 #[derive(Clone)]
@@ -709,6 +710,7 @@ impl_from_value!(svgrtypes::Length, Length);
 impl_from_value!(svgrtypes::ViewBox, ViewBox);
 impl_from_value!(svgrtypes::AspectRatio, AspectRatio);
 impl_from_value!(svgrtypes::Angle, Angle);
+impl_from_value!(svgrtypes::PaintOrder, PaintOrder);
 impl_from_value!(f64, Number);
 impl_from_value!(Opacity, Opacity);
 impl_from_value!(EnableBackground, EnableBackground);
@@ -868,6 +870,7 @@ impl AId {
                 | AId::Mask
                 | AId::Opacity
                 | AId::Overflow
+                | AId::PaintOrder
                 | AId::ShapeRendering
                 | AId::StopColor
                 | AId::StopOpacity

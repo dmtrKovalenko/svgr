@@ -4,6 +4,9 @@ use once_cell::sync::Lazy;
 use rgb::FromSlice;
 use usvgr::PreloadedImageData;
 
+#[rustfmt::skip]
+mod render;
+
 const IMAGE_SIZE: u32 = 300;
 
 fn load_image(path: &str) -> Arc<PreloadedImageData> {
@@ -53,9 +56,7 @@ pub fn render(name: &str) -> usize {
     };
 
     let fit_to = usvgr::FitTo::Width(IMAGE_SIZE);
-    let size = fit_to
-        .fit_to(tree.svg_node().size.to_screen_size())
-        .unwrap();
+    let size = fit_to.fit_to(tree.size.to_screen_size()).unwrap();
     let mut pixmap = tiny_skia::Pixmap::new(size.width(), size.height()).unwrap();
     svgr::render(
         &tree,

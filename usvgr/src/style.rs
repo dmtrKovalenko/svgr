@@ -2,8 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::rc::Rc;
+
 use crate::svgtree::{self, AId};
-use crate::{converter, paint_server, FuzzyEq, Opacity, Tree, Units};
+use crate::{
+    converter, paint_server, FuzzyEq, LinearGradient, Opacity, Pattern, RadialGradient, Units,
+};
 use strict_num::NonZeroPositiveF64;
 
 macro_rules! wrap {
@@ -24,10 +28,8 @@ macro_rules! wrap {
     };
 }
 
-
 /// An alias to `NonZeroPositiveF64`.
 pub type StrokeWidth = NonZeroPositiveF64;
-
 
 /// A `stroke-miterlimit` value.
 ///
@@ -82,7 +84,6 @@ impl_enum_from_str!(LineCap,
     "square"    => LineCap::Square
 );
 
-
 /// A line join.
 ///
 /// `stroke-linejoin` attribute in the SVG.
@@ -101,7 +102,6 @@ impl_enum_from_str!(LineJoin,
     "round" => LineJoin::Round,
     "bevel" => LineJoin::Bevel
 );
-
 
 /// A stroke style.
 #[allow(missing_docs)]
@@ -133,7 +133,6 @@ impl Default for Stroke {
         }
     }
 }
-
 
 /// A fill rule.
 ///
@@ -183,7 +182,6 @@ impl Default for Fill {
     }
 }
 
-
 /// A 8-bit RGB color.
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[allow(missing_docs)]
@@ -213,7 +211,6 @@ impl Color {
     }
 }
 
-
 pub(crate) trait SvgColorExt {
     fn split_alpha(self) -> (Color, Opacity);
 }
@@ -222,11 +219,10 @@ impl SvgColorExt for svgrtypes::Color {
     fn split_alpha(self) -> (Color, Opacity) {
         (
             Color::new_rgb(self.red, self.green, self.blue),
-            Opacity::new_u8(self.alpha)
+            Opacity::new_u8(self.alpha),
         )
     }
 }
-
 
 /// A paint style.
 ///
@@ -234,20 +230,45 @@ impl SvgColorExt for svgrtypes::Color {
 #[allow(missing_docs)]
 #[derive(Clone, Debug)]
 pub enum Paint {
-    /// Paint with a color.
     Color(Color),
-
-    /// Paint using a paint server.
-    Link(String),
+    LinearGradient(Rc<LinearGradient>),
+    RadialGradient(Rc<RadialGradient>),
+    Pattern(Rc<Pattern>),
 }
 
+impl Paint {
+    /// Returns paint server units.
+    ///
+    /// Returns `None` for `Color`.
+    #[inline]
+    pub fn units(&self) -> Option<Units> {
+        match self {
+            Self::Color(_) => None,
+            Self::LinearGradient(ref lg) => Some(lg.units),
+            Self::RadialGradient(ref rg) => Some(rg.units),
+            Self::Pattern(ref patt) => Some(patt.units),
+        }
+    }
+}
+
+impl PartialEq for Paint {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Color(lc), Self::Color(rc)) => lc == rc,
+            (Self::LinearGradient(ref lg1), Self::LinearGradient(ref lg2)) => Rc::ptr_eq(lg1, lg2),
+            (Self::RadialGradient(ref rg1), Self::RadialGradient(ref rg2)) => Rc::ptr_eq(rg1, rg2),
+            (Self::Pattern(ref p1), Self::Pattern(ref p2)) => Rc::ptr_eq(p1, p2),
+            _ => false,
+        }
+    }
+}
 
 pub(crate) fn resolve_fill(
     node: svgtree::Node,
     has_bbox: bool,
     state: &converter::State,
-    id_generator: &mut converter::NodeIdGenerator,
-    tree: &mut Tree,
+    cache: &mut converter::Cache,
 ) -> Option<Fill> {
     if state.parent_clip_path.is_some() {
         // A `clipPath` child can be filled only with a black color.
@@ -260,14 +281,17 @@ pub(crate) fn resolve_fill(
 
     let mut sub_opacity = Opacity::ONE;
     let paint = if let Some(n) = node.find_node_with_attribute(AId::Fill) {
-        convert_paint(n, AId::Fill, has_bbox, state, &mut sub_opacity, id_generator, tree)?
+        convert_paint(n, AId::Fill, has_bbox, state, &mut sub_opacity, cache)?
     } else {
         Paint::Color(Color::black())
     };
 
     Some(Fill {
         paint,
-        opacity: sub_opacity * node.find_attribute(AId::FillOpacity).unwrap_or(Opacity::ONE),
+        opacity: sub_opacity
+            * node
+                .find_attribute(AId::FillOpacity)
+                .unwrap_or(Opacity::ONE),
         rule: node.find_attribute(AId::FillRule).unwrap_or_default(),
     })
 }
@@ -276,8 +300,7 @@ pub(crate) fn resolve_stroke(
     node: svgtree::Node,
     has_bbox: bool,
     state: &converter::State,
-    id_generator: &mut converter::NodeIdGenerator,
-    tree: &mut Tree,
+    cache: &mut converter::Cache,
 ) -> Option<Stroke> {
     if state.parent_clip_path.is_some() {
         // A `clipPath` child cannot be stroked.
@@ -286,7 +309,7 @@ pub(crate) fn resolve_stroke(
 
     let mut sub_opacity = Opacity::ONE;
     let paint = if let Some(n) = node.find_node_with_attribute(AId::Stroke) {
-        convert_paint(n, AId::Stroke, has_bbox, state, &mut sub_opacity, id_generator, tree)?
+        convert_paint(n, AId::Stroke, has_bbox, state, &mut sub_opacity, cache)?
     } else {
         return None;
     };
@@ -303,7 +326,10 @@ pub(crate) fn resolve_stroke(
         dasharray: conv_dasharray(node, state),
         dashoffset: node.resolve_length(AId::StrokeDashoffset, state, 0.0) as f32,
         miterlimit,
-        opacity: sub_opacity * node.find_attribute(AId::StrokeOpacity).unwrap_or(Opacity::ONE),
+        opacity: sub_opacity
+            * node
+                .find_attribute(AId::StrokeOpacity)
+                .unwrap_or(Opacity::ONE),
         width,
         linecap: node.find_attribute(AId::StrokeLinecap).unwrap_or_default(),
         linejoin: node.find_attribute(AId::StrokeLinejoin).unwrap_or_default(),
@@ -318,12 +344,12 @@ fn convert_paint(
     has_bbox: bool,
     state: &converter::State,
     opacity: &mut Opacity,
-    id_generator: &mut converter::NodeIdGenerator,
-    tree: &mut Tree,
+    cache: &mut converter::Cache,
 ) -> Option<Paint> {
     match node.attribute::<&svgtree::AttributeValue>(aid)? {
         svgtree::AttributeValue::CurrentColor => {
-            let svg_color: svgrtypes::Color = node.find_attribute(AId::Color)
+            let svg_color: svgrtypes::Color = node
+                .find_attribute(AId::Color)
                 .unwrap_or_else(svgrtypes::Color::black);
             let (color, alpha) = svg_color.split_alpha();
             *opacity = alpha;
@@ -338,25 +364,23 @@ fn convert_paint(
             if let Some(link) = node.document().element_by_id(func_iri) {
                 let tag_name = link.tag_name().unwrap();
                 if tag_name.is_paint_server() {
-                    match paint_server::convert(link, state, id_generator, tree) {
-                        Some(paint_server::ServerOrColor::Server { id, units }) => {
+                    match paint_server::convert(link, state, cache) {
+                        Some(paint_server::ServerOrColor::Server(paint)) => {
                             // We can use a paint server node with ObjectBoundingBox units
                             // for painting only when the shape itself has a bbox.
                             //
                             // See SVG spec 7.11 for details.
-                            if !has_bbox && units == Units::ObjectBoundingBox {
+                            if !has_bbox && paint.units() == Some(Units::ObjectBoundingBox) {
                                 from_fallback(node, *fallback, opacity)
                             } else {
-                                Some(Paint::Link(id))
+                                Some(paint)
                             }
                         }
                         Some(paint_server::ServerOrColor::Color { color, opacity: so }) => {
                             *opacity = so;
                             Some(Paint::Color(color))
                         }
-                        None => {
-                            from_fallback(node, *fallback, opacity)
-                        }
+                        None => from_fallback(node, *fallback, opacity),
                     }
                 } else {
                     log::warn!("'{}' cannot be used to {} a shape.", tag_name, aid);
@@ -366,9 +390,7 @@ fn convert_paint(
                 from_fallback(node, *fallback, opacity)
             }
         }
-        _ => {
-            None
-        }
+        _ => None,
     }
 }
 
@@ -378,11 +400,10 @@ fn from_fallback(
     opacity: &mut Opacity,
 ) -> Option<Paint> {
     match fallback? {
-        svgrtypes::PaintFallback::None => {
-            None
-        }
+        svgrtypes::PaintFallback::None => None,
         svgrtypes::PaintFallback::CurrentColor => {
-            let svg_color: svgrtypes::Color = node.find_attribute(AId::Color)
+            let svg_color: svgrtypes::Color = node
+                .find_attribute(AId::Color)
                 .unwrap_or_else(svgrtypes::Color::black);
             let (color, alpha) = svg_color.split_alpha();
             *opacity = alpha;
@@ -398,10 +419,7 @@ fn from_fallback(
 
 // Prepare the 'stroke-dasharray' according to:
 // https://www.w3.org/TR/SVG11/painting.html#StrokeDasharrayProperty
-fn conv_dasharray(
-    node: svgtree::Node,
-    state: &converter::State,
-) -> Option<Vec<f64>> {
+fn conv_dasharray(node: svgtree::Node, state: &converter::State) -> Option<Vec<f64>> {
     let node = node.find_node_with_attribute(AId::StrokeDasharray)?;
     let list = super::units::convert_list(node, AId::StrokeDasharray, state)?;
 

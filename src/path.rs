@@ -24,31 +24,60 @@ pub fn draw(
 
     let antialias = path.rendering_mode.use_shape_antialiasing();
 
-    if let Some(ref fill) = path.fill {
-        crate::paint_server::fill(tree, fill, style_bbox, &skia_path, antialias, blend_mode, canvas);
-    }
+    let fill_path = |canvas| {
+        if let Some(ref fill) = path.fill {
+            crate::paint_server::fill(
+                tree, fill, style_bbox, &skia_path, antialias, blend_mode, canvas,
+            );
+        }
+    };
 
-    if path.stroke.is_some() {
-        crate::paint_server::stroke(tree, &path.stroke, style_bbox, &skia_path, antialias, blend_mode, canvas);
+    let stroke_path = |canvas| {
+        if path.stroke.is_some() {
+            crate::paint_server::stroke(
+                tree,
+                &path.stroke,
+                style_bbox,
+                &skia_path,
+                antialias,
+                blend_mode,
+                canvas,
+            );
+        }
+    };
+
+    if path.paint_order == usvgr::PaintOrder::FillAndStroke {
+        fill_path(canvas);
+        stroke_path(canvas);
+    } else {
+        stroke_path(canvas);
+        fill_path(canvas);
     }
 
     bbox
 }
 
-fn convert_path(
-    path: &usvgr::PathData,
-) -> Option<tiny_skia::Path> {
+fn convert_path(path: &usvgr::PathData) -> Option<tiny_skia::Path> {
     let mut pb = tiny_skia::PathBuilder::new();
-    for seg in path.iter() {
-        match *seg {
+    for seg in path.segments() {
+        match seg {
             usvgr::PathSegment::MoveTo { x, y } => {
                 pb.move_to(x as f32, y as f32);
             }
             usvgr::PathSegment::LineTo { x, y } => {
                 pb.line_to(x as f32, y as f32);
             }
-            usvgr::PathSegment::CurveTo { x1, y1, x2, y2, x, y } => {
-                pb.cubic_to(x1 as f32, y1 as f32, x2 as f32, y2 as f32, x as f32, y as f32);
+            usvgr::PathSegment::CurveTo {
+                x1,
+                y1,
+                x2,
+                y2,
+                x,
+                y,
+            } => {
+                pb.cubic_to(
+                    x1 as f32, y1 as f32, x2 as f32, y2 as f32, x as f32, y as f32,
+                );
             }
             usvgr::PathSegment::ClosePath => {
                 pb.close();
