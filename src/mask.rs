@@ -4,17 +4,19 @@
 
 use usvgr::TransformFromBBox;
 
-use crate::{ConvTransform, render::{Canvas, RenderState}};
+use crate::{
+    render::{Canvas, RenderState},
+    ConvTransform,
+};
 
 pub fn mask(
     tree: &usvgr::Tree,
-    node: &usvgr::Node,
     mask: &usvgr::Mask,
     bbox: usvgr::PathBbox,
     canvas: &mut Canvas,
 ) -> Option<()> {
-    let bbox = if mask.units == usvgr::Units::ObjectBoundingBox ||
-                  mask.content_units == usvgr::Units::ObjectBoundingBox
+    let bbox = if mask.units == usvgr::Units::ObjectBoundingBox
+        || mask.content_units == usvgr::Units::ObjectBoundingBox
     {
         if let Some(bbox) = bbox.to_rect() {
             bbox
@@ -53,7 +55,7 @@ pub fn mask(
             mask_canvas.apply_transform(usvgr::Transform::from_bbox(bbox).to_native());
         }
 
-        crate::render::render_group(tree, node, &mut RenderState::Ok, &mut mask_canvas);
+        crate::render::render_group(tree, &mask.root, &mut RenderState::Ok, &mut mask_canvas);
     }
 
     {
@@ -61,19 +63,16 @@ pub fn mask(
         image_to_mask(mask_pixmap.data_mut().as_rgba_mut());
     }
 
-    if let Some(ref id) = mask.mask {
-        if let Some(ref mask_node) = tree.defs_by_id(id) {
-            if let usvgr::NodeKind::Mask(ref mask) = *mask_node.borrow() {
-                self::mask(tree, mask_node, mask, bbox.to_path_bbox(), canvas);
-            }
-        }
+    if let Some(ref mask) = mask.mask {
+        self::mask(tree, mask, bbox.to_path_bbox(), canvas);
     }
 
     let mut paint = tiny_skia::PixmapPaint::default();
     paint.blend_mode = tiny_skia::BlendMode::DestinationIn;
 
     canvas.pixmap.draw_pixmap(
-        0, 0,
+        0,
+        0,
         mask_pixmap.as_ref(),
         &paint,
         tiny_skia::Transform::identity(),

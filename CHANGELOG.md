@@ -8,10 +8,28 @@ This changelog also contains important changes in dependencies.
 
 ## [Unreleased]
 ### Added
+- Partial `paint-order` attribute support.
+  Markers can only be under or above the shape.
+
+## [0.24.0] - 2022-10-22
+### Added
 - CSS3 `writing-mode` variants `vertical-rl` and `vertical-lr`.
   Thanks to [yisibl](https://github.com/yisibl).
+- (tiny-skia) AArch64 Neon SIMD support. Up to 3x faster on Apple M1.
 
 ### Changed
+- `usvg::Tree` stores only `Group`, `Path` and `Image` nodes now.
+  Instead of emulating an SVG file structure, where gradients, patterns, filters, clips and masks
+  are part of the nodes tree (usually inside the `defs` element), we reference them using `Rc`
+  from now.
+  This change makes `usvg` a bit simpler. Makes `usvg` API way easier, since instead of
+  looking for a node via `usvg::Tree::defs_by_id` the caller can access the type directly via `Rc`.
+  And makes creation of custom `usvg::Tree`s way easier.
+- `clip_path`, `mask` and `filters` `usvg::Group` fields store `Rc` instead of `String` now.
+- `usvg::NodeExt::units` was moved to `usvg::Paint::units`.
+- `usvg::filter::ImageKind::Use` stores `usvg::Node` instead of `String`.
+- `usvg::PathData` stores commands and points separately now to reduce overall memory usage.
+- `usvg::PathData` segments should be accessed via `segments()` now.
 - Most numeric types have been moved to the `strict-num` crate.
 - Rename `NormalizedValue` into `NormalizedF64`.
 - Rename `PositiveNumber` into `PositiveF64`.
@@ -19,10 +37,25 @@ This changelog also contains important changes in dependencies.
 - `usvg::TextSpan::font_size` is `NonZeroPositiveF64` instead of `f64` now.
 - Re-export `usvg` and `tiny-skia` dependencies in `resvg`.
 - Re-export `roxmltree` dependency in `usvg`.
+- (usvg) Output float precision is reduced from 11 to 8 digits.
+
+### Removed
+- `usvg::Tree::create`. `usvg::Tree` is an open struct now.
+- `usvg::Tree::root`. It's a public field now.
+- `usvg::Tree::svg_node`. Replaced with `usvg::Tree` public fields.
+- `defs`, `is_in_defs`, `append_to_defs` and `defs_by_id` from `usvg::Tree`.
+  We no longer emulate SVG structure. No alternative.
+- `usvg::Tree::is_in_defs`. There are no `defs` anymore.
+- `usvg::Paint::Link`. We store gradient and patterns directly in `usvg::Paint` now.
+- `usvg::Svg`. No longer needed. `size` and `view_box` are `usvg::Tree` fields now.
+- `usvg::SubPathIter` and `usvg::PathData::subpaths`. No longer used.
 
 ### Fixed
 - Path bbox calculation scales stroke width too.
   Thanks to [growler](https://github.com/growler).
+- (tiny-skia) Round caps roundness.
+- (xmlparser) Stack overflow on specific files.
+- (c-api) `resvg_is_image_empty` output was inverted.
 
 ## [0.23.0] - 2022-06-11
 ### Added
@@ -617,7 +650,8 @@ This changelog also contains important changes in dependencies.
 ### Fixed
 - `font-size` attribute inheritance during `use` resolving.
 
-[Unreleased]: https://github.com/RazrFalcon/resvg/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/RazrFalcon/resvg/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/RazrFalcon/resvg/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/RazrFalcon/resvg/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/RazrFalcon/resvg/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/RazrFalcon/resvg/compare/v0.20.0...v0.21.0

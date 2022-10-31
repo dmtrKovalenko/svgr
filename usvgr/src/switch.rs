@@ -3,7 +3,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use crate::svgtree::{self, AId};
-use crate::{converter, Node, OptionsRef, Tree};
+use crate::{converter, Node, OptionsRef};
 
 // Full list can be found here: https://www.w3.org/TR/SVG11/feature.html
 static FEATURES: &[&str] = &[
@@ -34,26 +34,27 @@ static FEATURES: &[&str] = &[
     "http://www.w3.org/TR/SVG11/feature#Mask",
     "http://www.w3.org/TR/SVG11/feature#Filter",
     "http://www.w3.org/TR/SVG11/feature#BasicFilter",
-    "http://www.w3.org/TR/SVG11/feature#XlinkAttribute", // only xlink:href
+    // only xlink:href
+    "http://www.w3.org/TR/SVG11/feature#XlinkAttribute",
     // "http://www.w3.org/TR/SVG11/feature#Font",
     // "http://www.w3.org/TR/SVG11/feature#BasicFont",
 ];
 
-
 pub(crate) fn convert(
     node: svgtree::Node,
     state: &converter::State,
-    id_generator: &mut converter::NodeIdGenerator,
+    cache: &mut converter::Cache,
     parent: &mut Node,
-    tree: &mut Tree,
 ) -> Option<()> {
-    let child = node.children().find(|n| is_condition_passed(*n, state.opt))?;
-    match converter::convert_group(node, state, false, id_generator, parent, tree) {
+    let child = node
+        .children()
+        .find(|n| is_condition_passed(*n, state.opt))?;
+    match converter::convert_group(node, state, false, cache, parent) {
         converter::GroupKind::Create(ref mut g) => {
-            converter::convert_element(child, state, id_generator, g, tree);
+            converter::convert_element(child, state, cache, g);
         }
         converter::GroupKind::Skip => {
-            converter::convert_element(child, state, id_generator, parent, tree);
+            converter::convert_element(child, state, cache, parent);
         }
         converter::GroupKind::Ignore => {}
     }
@@ -61,10 +62,7 @@ pub(crate) fn convert(
     Some(())
 }
 
-pub(crate) fn is_condition_passed(
-    node: svgtree::Node,
-    opt: &OptionsRef,
-) -> bool {
+pub(crate) fn is_condition_passed(node: svgtree::Node, opt: &OptionsRef) -> bool {
     if !node.is_element() {
         return false;
     }
@@ -94,10 +92,7 @@ pub(crate) fn is_condition_passed(
 }
 
 /// SVG spec 5.8.5
-fn is_valid_sys_lang(
-    node: svgtree::Node,
-    opt: &OptionsRef,
-) -> bool {
+fn is_valid_sys_lang(node: svgtree::Node, opt: &OptionsRef) -> bool {
     // 'The attribute value is a comma-separated list of language names
     // as defined in BCP 47.'
     //

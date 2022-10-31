@@ -487,11 +487,7 @@ fn load_fonts(args: &mut CliArgs) -> usvgr::fontdb::Database {
 
 fn query_all(tree: &usvgr::Tree) -> Result<(), String> {
     let mut count = 0;
-    for node in tree.root().descendants() {
-        if tree.is_in_defs(&node) {
-            continue;
-        }
-
+    for node in tree.root.descendants() {
         if node.id().is_empty() {
             continue;
         }
@@ -544,7 +540,7 @@ fn render_svg(args: Args, tree: &usvgr::Tree, out_png: &path::Path) -> Result<()
     let now = std::time::Instant::now();
 
     let img = if let Some(ref id) = args.export_id {
-        let node = match tree.root().descendants().find(|n| &*n.id() == id) {
+        let node = match tree.root.descendants().find(|n| &*n.id() == id) {
             Some(node) => node,
             None => return Err(format!("SVG doesn't have '{}' ID", id)),
         };
@@ -581,7 +577,7 @@ fn render_svg(args: Args, tree: &usvgr::Tree, out_png: &path::Path) -> Result<()
 
             let size = args
                 .fit_to
-                .fit_to(tree.svg_node().size.to_screen_size())
+                .fit_to(tree.size.to_screen_size())
                 .ok_or_else(|| "target size is zero".to_string())?;
 
             // Unwrap is safe, because `size` is already valid.
@@ -606,7 +602,7 @@ fn render_svg(args: Args, tree: &usvgr::Tree, out_png: &path::Path) -> Result<()
     } else {
         let size = args
             .fit_to
-            .fit_to(tree.svg_node().size.to_screen_size())
+            .fit_to(tree.size.to_screen_size())
             .ok_or_else(|| "target size is zero".to_string())?;
 
         // Unwrap is safe, because `size` is already valid.
