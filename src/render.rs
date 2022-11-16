@@ -4,20 +4,30 @@
 
 use std::convert::TryInto;
 
-use usvgr::{FuzzyEq, NodeExt};
+use tiny_skia::{PixmapMut, PixmapPaint};
+use usvgr::{filter::Blend, FuzzyEq, NodeExt, Transform};
 
 use crate::ConvTransform;
 
 pub struct Canvas<'a> {
+    pub(crate) skip_caching: bool,
     pub pixmap: tiny_skia::PixmapMut<'a>,
     pub transform: tiny_skia::Transform,
     pub clip: Option<tiny_skia::ClipMask>,
+}
+
+pub struct FromPixmap {
+    pub pixmap: tiny_skia::Pixmap,
+    pub tx: i32,
+    pub ty: i32,
+    pub opacity: f32,
 }
 
 impl<'a> From<tiny_skia::PixmapMut<'a>> for Canvas<'a> {
     fn from(pixmap: tiny_skia::PixmapMut<'a>) -> Self {
         Canvas {
             pixmap,
+            skip_caching: false,
             transform: tiny_skia::Transform::identity(),
             clip: None,
         }
@@ -51,6 +61,83 @@ impl Canvas<'_> {
             self.clip = Some(clip);
         }
     }
+
+    pub fn merge_canvas(&mut self, other: &Canvas) {
+        let self_data = self.pixmap.pixels_mut();
+        let other_data = other.pixmap.as_ref().pixels();
+
+        for (i, pixel) in other_data.iter().enumerate() {
+            if pixel.get() > 0 {
+                self_data[i] = *pixel
+            }
+        }
+    }
+
+    /// Creates sub pixmap that will be cached itself withing a canvas cache. Guarantees empty canvas within closure.  
+    pub fn with_subpixmap_cache(canvas: &mut Canvas, mut f: impl FnMut(&mut Canvas) -> FromPixmap) {
+        let mut pixmap =
+            tiny_skia::Pixmap::new(canvas.pixmap.width(), canvas.pixmap.height()).unwrap();
+        let pixmap_mut = pixmap.as_mut();
+
+        let mut temp_canvas = Canvas {
+            pixmap: pixmap_mut,
+            transform: canvas.transform,
+            skip_caching: true,
+            clip: canvas.clip.clone(),
+        };
+
+        let FromPixmap {
+            pixmap,
+            tx,
+            ty,
+            opacity,
+        } = f(&mut temp_canvas);
+
+        canvas.pixmap.draw_pixmap(
+            tx,
+            ty,
+            pixmap.as_ref(),
+            &PixmapPaint {
+                opacity,
+                blend_mode: tiny_skia::BlendMode::SourceOver,
+                quality: tiny_skia::FilterQuality::Nearest,
+            },
+            tiny_skia::Transform::default(),
+            None,
+        );
+    }
+
+    pub fn with_cache(canvas: &mut Canvas, mut f: impl FnMut(&mut Canvas)) {
+        if canvas.skip_caching {
+            return f(canvas);
+        }
+
+        // safe to unwrap – cloning a pixmap can't fail for dimensions validation.
+        let mut pixmap =
+            tiny_skia::Pixmap::new(canvas.pixmap.width(), canvas.pixmap.height()).unwrap();
+        let pixmap_mut = pixmap.as_mut();
+
+        let mut temp_canvas = Canvas {
+            pixmap: pixmap_mut,
+            transform: canvas.transform,
+            skip_caching: true,
+            clip: canvas.clip.clone(),
+        };
+
+        f(&mut temp_canvas);
+        canvas.pixmap.draw_pixmap(
+            0,
+            0,
+            temp_canvas.pixmap.as_ref(),
+            &PixmapPaint {
+                opacity: 1.0,
+                blend_mode: tiny_skia::BlendMode::SourceOver,
+                quality: tiny_skia::FilterQuality::Nearest,
+            },
+            tiny_skia::Transform::default(),
+            None,
+        );
+    }
 }
 
 /// Indicates the current rendering state.
@@ -65,7 +152,11 @@ pub(crate) enum RenderState {
     BackgroundFinished,
 }
 
-pub(crate) fn render_to_canvas(tree: &usvgr::Tree, img_size: usvgr::ScreenSize, canvas: &mut Canvas) {
+pub(crate) fn render_to_canvas(
+    tree: &usvgr::Tree,
+    img_size: usvgr::ScreenSize,
+    canvas: &mut Canvas,
+) {
     render_node_to_canvas(
         tree,
         &tree.root,
@@ -171,107 +262,102 @@ fn render_group_impl(
     state: &mut RenderState,
     canvas: &mut Canvas,
 ) -> Option<usvgr::PathBbox> {
-    let mut sub_pixmap = tiny_skia::Pixmap::new(canvas.pixmap.width(), canvas.pixmap.height())?;
+    let mut bbox: Option<usvgr::PathBbox> = None;
     let curr_ts = canvas.transform;
 
-    let bbox = {
-        let mut sub_canvas = Canvas::from(sub_pixmap.as_mut());
-        sub_canvas.transform = curr_ts;
-        render_group(tree, node, state, &mut sub_canvas)
-    };
+    Canvas::with_subpixmap_cache(canvas, |sub_canvas| {
+        bbox = render_group(tree, node, state, sub_canvas);
 
-    // At this point, `sub_pixmap` has probably the same size as the viewbox.
-    // So instead of clipping, masking and blending the whole viewbox, which can be very expensive,
-    // we're trying to reduce `sub_pixmap` to it's actual content trimming
-    // all transparent borders.
-    //
-    // Basically, if viewbox is 2000x2000 and the current group is 20x20, there is no point
-    // in blending the whole viewbox, we can blend just the current group region.
-    //
-    // Transparency trimming is not yet allowed on groups with filter,
-    // because filter expands the pixmap and it should be handled separately.
-    #[cfg(feature = "filter")]
-    let (tx, ty, mut sub_pixmap) = if g.filters.is_empty() {
-        trim_transparency(sub_pixmap)?
-    } else {
-        (0, 0, sub_pixmap)
-    };
+        // At this point, `sub_pixmap` has probably the same size as the viewbox.
+        // So instead of clipping, masking and blending the whole viewbox, which can be very expensive,
+        // we're trying to reduce `sub_pixmap` to it's actual content trimming
+        // all transparent borders.
+        //
+        // Basically, if viewbox is 2000x2000 and the current group is 20x20, there is no point
+        // in blending the whole viewbox, we can blend just the current group region.
+        //
+        // Transparency trimming is not yet allowed on groups with filter,
+        // because filter expands the pixmap and it should be handled separately.
+        #[cfg(feature = "filter")]
+        let (tx, ty, mut sub_pixmap) = if g.filters.is_empty() {
+            trim_transparency(&mut sub_canvas.pixmap).unwrap()
+        } else {
+            (0, 0, sub_canvas.pixmap.to_owned())
+        };
 
-    #[cfg(not(feature = "filter"))]
-    let (tx, ty, mut sub_pixmap) = (0, 0, sub_pixmap);
+        #[cfg(not(feature = "filter"))]
+        let (tx, ty, mut sub_pixmap) = (0, 0, sub_pixmap);
 
-    // During the background rendering for filters,
-    // an opacity, a filter, a clip and a mask should be ignored for the inner group.
-    // So we are simply rendering the `sub_img` without any postprocessing.
-    //
-    // SVG spec, 15.6 Accessing the background image
-    // 'Any filter effects, masking and group opacity that might be set on A[i] do not apply
-    // when rendering the children of A[i] into BUF[i].'
-    if *state == RenderState::BackgroundFinished {
-        let paint = tiny_skia::PixmapPaint::default();
-        canvas.pixmap.draw_pixmap(
+        // During the background rendering for filters,
+        // an opacity, a filter, a clip and a mask should be ignored for the inner group.
+        // So we are simply rendering the `sub_img` without any postprocessing.
+        //
+        // SVG spec, 15.6 Accessing the background image
+        // 'Any filter effects, masking and group opacity that might be set on A[i] do not apply
+        // when rendering the children of A[i] into BUF[i].'
+        if *state == RenderState::BackgroundFinished {
+            return FromPixmap {
+                opacity: 1.0,
+                pixmap: sub_pixmap,
+                tx,
+                ty,
+            };
+        }
+
+        // Filter can be rendered on an object without a bbox,
+        // as long as filter uses `userSpaceOnUse`.
+        #[cfg(feature = "filter")]
+        for filter in &g.filters {
+            let bbox = bbox.and_then(|r| r.to_rect());
+            let ts = usvgr::Transform::from_native(curr_ts);
+            let background = prepare_filter_background(tree, node, filter, &sub_pixmap);
+            let fill_paint = prepare_filter_fill_paint(tree, node, filter, bbox, ts, &sub_pixmap);
+            let stroke_paint =
+                prepare_filter_stroke_paint(tree, node, filter, bbox, ts, &sub_pixmap);
+            crate::filter::apply(
+                filter,
+                bbox,
+                &ts,
+                tree,
+                background.as_ref(),
+                fill_paint.as_ref(),
+                stroke_paint.as_ref(),
+                &mut sub_pixmap,
+            )
+        }
+
+        // Clipping and masking can be done only for objects with a valid bbox.
+        if let Some(bbox) = bbox {
+            if let Some(ref clip_path) = g.clip_path {
+                let mut sub_canvas = Canvas::from(sub_pixmap.as_mut());
+                sub_canvas.skip_caching = true;
+                sub_canvas.translate(-tx as f32, -ty as f32);
+                sub_canvas.apply_transform(curr_ts);
+                crate::clip::clip(tree, clip_path, bbox, &mut sub_canvas);
+            }
+
+            if let Some(ref mask) = g.mask {
+                let mut sub_canvas = Canvas::from(sub_pixmap.as_mut());
+                sub_canvas.skip_caching = true;
+                sub_canvas.translate(-tx as f32, -ty as f32);
+                sub_canvas.apply_transform(curr_ts);
+                crate::mask::mask(tree, mask, bbox, &mut sub_canvas);
+            }
+        }
+
+        let opacity = if g.opacity != usvgr::Opacity::ONE {
+            g.opacity.get() as f32
+        } else {
+            1.0
+        };
+
+        FromPixmap {
+            opacity,
+            pixmap: sub_pixmap,
             tx,
             ty,
-            sub_pixmap.as_ref(),
-            &paint,
-            tiny_skia::Transform::identity(),
-            None,
-        );
-        return bbox;
-    }
-
-    // Filter can be rendered on an object without a bbox,
-    // as long as filter uses `userSpaceOnUse`.
-    #[cfg(feature = "filter")]
-    for filter in &g.filters {
-        let bbox = bbox.and_then(|r| r.to_rect());
-        let ts = usvgr::Transform::from_native(curr_ts);
-        let background = prepare_filter_background(tree, node, filter, &sub_pixmap);
-        let fill_paint = prepare_filter_fill_paint(tree, node, filter, bbox, ts, &sub_pixmap);
-        let stroke_paint = prepare_filter_stroke_paint(tree, node, filter, bbox, ts, &sub_pixmap);
-        crate::filter::apply(
-            filter,
-            bbox,
-            &ts,
-            tree,
-            background.as_ref(),
-            fill_paint.as_ref(),
-            stroke_paint.as_ref(),
-            &mut sub_pixmap,
-        );
-    }
-
-    // Clipping and masking can be done only for objects with a valid bbox.
-    if let Some(bbox) = bbox {
-        if let Some(ref clip_path) = g.clip_path {
-            let mut sub_canvas = Canvas::from(sub_pixmap.as_mut());
-            sub_canvas.translate(-tx as f32, -ty as f32);
-            sub_canvas.apply_transform(curr_ts);
-            crate::clip::clip(tree, clip_path, bbox, &mut sub_canvas);
         }
-
-        if let Some(ref mask) = g.mask {
-            let mut sub_canvas = Canvas::from(sub_pixmap.as_mut());
-            sub_canvas.translate(-tx as f32, -ty as f32);
-            sub_canvas.apply_transform(curr_ts);
-            crate::mask::mask(tree, mask, bbox, &mut sub_canvas);
-        }
-    }
-
-    let mut paint = tiny_skia::PixmapPaint::default();
-    paint.quality = tiny_skia::FilterQuality::Nearest;
-    if g.opacity != usvgr::Opacity::ONE {
-        paint.opacity = g.opacity.get() as f32;
-    }
-
-    canvas.pixmap.draw_pixmap(
-        tx,
-        ty,
-        sub_pixmap.as_ref(),
-        &paint,
-        tiny_skia::Transform::identity(),
-        None,
-    );
+    });
 
     bbox
 }
@@ -285,12 +371,14 @@ fn render_group_impl(
 /// But because of anti-aliasing, float precision and especially stroking,
 /// this can be fairly complicated and error-prone.
 /// So for now we're using this method.
-pub fn trim_transparency(pixmap: tiny_skia::Pixmap) -> Option<(i32, i32, tiny_skia::Pixmap)> {
-    let pixels = pixmap.data();
+pub fn trim_transparency(
+    pixmap: &mut tiny_skia::PixmapMut,
+) -> Option<(i32, i32, tiny_skia::Pixmap)> {
     let width = pixmap.width() as i32;
     let height = pixmap.height() as i32;
     let mut min_x = pixmap.width() as i32;
     let mut min_y = pixmap.height() as i32;
+    let pixels = pixmap.data_mut();
     let mut max_x = 0;
     let mut max_y = 0;
 
@@ -377,10 +465,10 @@ pub fn trim_transparency(pixmap: tiny_skia::Pixmap) -> Option<(i32, i32, tiny_sk
 
     if min_x < max_x && min_y < max_y {
         let rect = tiny_skia::IntRect::from_ltrb(min_x, min_y, max_x, max_y)?;
-        let pixmap = pixmap.clone_rect(rect)?;
+        let pixmap = pixmap.as_ref().clone_rect(rect)?;
         Some((min_x, min_y, pixmap))
     } else {
-        Some((0, 0, pixmap))
+        Some((0, 0, pixmap.to_owned()))
     }
 }
 

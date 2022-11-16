@@ -16,6 +16,7 @@ pub fn clip(
     clip_pixmap.fill(tiny_skia::Color::BLACK);
 
     let mut clip_canvas = Canvas::from(clip_pixmap.as_mut());
+    clip_canvas.skip_caching = true;
     clip_canvas.transform = canvas.transform;
     clip_canvas.apply_transform(cp.transform.to_native());
 

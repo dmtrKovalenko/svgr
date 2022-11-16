@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::render::Canvas;
+use crate::render::{Canvas};
 
 pub fn draw(
     tree: &usvgr::Tree,
@@ -15,44 +15,45 @@ pub fn draw(
         return bbox;
     }
 
-    // `usvgr` guaranties that path without a bbox will not use
-    // a paint server with ObjectBoundingBox,
-    // so we can pass whatever rect we want, because it will not be used anyway.
-    let style_bbox = bbox.unwrap_or_else(|| usvgr::PathBbox::new(0.0, 0.0, 1.0, 1.0).unwrap());
-
     let skia_path = convert_path(&path.data)?;
 
-    let antialias = path.rendering_mode.use_shape_antialiasing();
+    Canvas::with_cache(canvas, |canvas| {
+        // `usvgr` guaranties that path without a bbox will not use
+        // a paint server with ObjectBoundingBox,
+        // so we can pass whatever rect we want, because it will not be used anyway.
+        let style_bbox = bbox.unwrap_or_else(|| usvgr::PathBbox::new(0.0, 0.0, 1.0, 1.0).unwrap());
+        let antialias = path.rendering_mode.use_shape_antialiasing();
 
-    let fill_path = |canvas| {
-        if let Some(ref fill) = path.fill {
-            crate::paint_server::fill(
-                tree, fill, style_bbox, &skia_path, antialias, blend_mode, canvas,
-            );
+        let fill_path = |canvas| {
+            if let Some(ref fill) = path.fill {
+                crate::paint_server::fill(
+                    tree, fill, style_bbox, &skia_path, antialias, blend_mode, canvas,
+                );
+            }
+        };
+
+        let stroke_path = |canvas| {
+            if path.stroke.is_some() {
+                crate::paint_server::stroke(
+                    tree,
+                    &path.stroke,
+                    style_bbox,
+                    &skia_path,
+                    antialias,
+                    blend_mode,
+                    canvas,
+                );
+            }
+        };
+
+        if path.paint_order == usvgr::PaintOrder::FillAndStroke {
+            fill_path(canvas);
+            stroke_path(canvas);
+        } else {
+            stroke_path(canvas);
+            fill_path(canvas);
         }
-    };
-
-    let stroke_path = |canvas| {
-        if path.stroke.is_some() {
-            crate::paint_server::stroke(
-                tree,
-                &path.stroke,
-                style_bbox,
-                &skia_path,
-                antialias,
-                blend_mode,
-                canvas,
-            );
-        }
-    };
-
-    if path.paint_order == usvgr::PaintOrder::FillAndStroke {
-        fill_path(canvas);
-        stroke_path(canvas);
-    } else {
-        stroke_path(canvas);
-        fill_path(canvas);
-    }
+    });
 
     bbox
 }

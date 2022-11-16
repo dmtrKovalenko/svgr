@@ -622,8 +622,8 @@ fn render_svg(args: Args, tree: &usvgr::Tree, out_png: &path::Path) -> Result<()
         );
 
         if args.export_area_drawing {
-            let (_, _, pixmap) =
-                svgr::trim_transparency(pixmap).ok_or_else(|| "target size is zero".to_string())?;
+            let (_, _, pixmap) = svgr::trim_transparency(&mut pixmap.as_mut())
+                .ok_or_else(|| "target size is zero".to_string())?;
 
             if let Some(background) = args.background {
                 let mut bg = pixmap.clone();

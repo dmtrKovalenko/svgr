@@ -331,7 +331,7 @@ pub enum NodeKind {
 
 impl NodeKind {
     /// Returns node's ID.
-    pub fn id(&self) -> &str {
+    pub fn id(&self) -> &str { 
         match self {
             NodeKind::Group(ref e) => e.id.as_str(),
             NodeKind::Path(ref e) => e.id.as_str(),
