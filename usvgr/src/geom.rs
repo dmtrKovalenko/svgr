@@ -2,8 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use strict_num::ApproxEqUlps;
 use crate::{Align, AspectRatio};
+use std::hash::{Hash, Hasher};
+use strict_num::ApproxEqUlps;
 
 /// A trait for fuzzy/approximate equality comparisons of float numbers.
 pub trait FuzzyEq<Rhs: ?Sized = Self> {
@@ -543,6 +544,26 @@ pub struct Rect {
     height: f64,
 }
 
+impl Eq for Rect {}
+
+impl PartialEq for Rect {
+    fn eq(&self, other: &Self) -> bool {
+        self.x == other.x
+            && self.y == other.y
+            && self.width == other.width
+            && self.height == other.height
+    }
+}
+
+impl Hash for Rect {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.x.to_bits().hash(state);
+        self.y.to_bits().hash(state);
+        self.width.to_bits().hash(state);
+        self.height.to_bits().hash(state);
+    }
+}
+
 impl Rect {
     /// Creates a new `Rect` from values.
     #[inline]
@@ -924,7 +945,7 @@ impl std::fmt::Display for ScreenRect {
 /// Representation of the [`<transform>`] type.
 ///
 /// [`<transform>`]: https://www.w3.org/TR/SVG2/coords.html#InterfaceSVGTransform
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, Debug)]
 #[allow(missing_docs)]
 pub struct Transform {
     pub a: f64,
@@ -934,6 +955,30 @@ pub struct Transform {
     pub e: f64,
     pub f: f64,
 }
+
+impl PartialEq for Transform {
+    fn eq(&self, other: &Self) -> bool {
+        self.a == other.a
+            && self.b == other.b
+            && self.c == other.c
+            && self.d == other.d
+            && self.e == other.e
+            && self.f == other.f
+    }
+}
+
+impl std::hash::Hash for Transform {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.a.to_bits().hash(state);
+        self.b.to_bits().hash(state);
+        self.c.to_bits().hash(state);
+        self.d.to_bits().hash(state);
+        self.e.to_bits().hash(state);
+        self.f.to_bits().hash(state);
+    }
+}
+
+impl Eq for Transform {}
 
 impl From<svgrtypes::Transform> for Transform {
     fn from(ts: svgrtypes::Transform) -> Self {
@@ -1099,7 +1144,7 @@ impl FuzzyEq for Transform {
 }
 
 /// View box.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Hash, Copy, Debug)]
 pub struct ViewBox {
     /// Value of the `viewBox` attribute.
     pub rect: Rect,

@@ -4,13 +4,14 @@
 
 use usvgr::{NodeExt, TransformFromBBox};
 
-use crate::{render::Canvas, ConvTransform, OptionLog};
+use crate::{cache, render::Canvas, ConvTransform, OptionLog};
 
 pub fn clip(
     tree: &usvgr::Tree,
     cp: &usvgr::ClipPath,
     bbox: usvgr::PathBbox,
     canvas: &mut Canvas,
+    cache: &mut cache::SvgrCache,
 ) -> Option<()> {
     let mut clip_pixmap = tiny_skia::Pixmap::new(canvas.pixmap.width(), canvas.pixmap.height())?;
     clip_pixmap.fill(tiny_skia::Color::BLACK);
@@ -39,10 +40,11 @@ pub fn clip(
                     path_node,
                     tiny_skia::BlendMode::Clear,
                     &mut clip_canvas,
+                    cache,
                 );
             }
             usvgr::NodeKind::Group(ref g) => {
-                clip_group(tree, &node, g, bbox, &mut clip_canvas);
+                clip_group(tree, &node, g, bbox, &mut clip_canvas, cache);
             }
             _ => {}
         }
@@ -51,7 +53,7 @@ pub fn clip(
     }
 
     if let Some(ref cp) = cp.clip_path {
-        clip(tree, cp, bbox, canvas);
+        clip(tree, cp, bbox, canvas, cache);
     }
 
     let mut paint = tiny_skia::PixmapPaint::default();
@@ -74,6 +76,7 @@ fn clip_group(
     g: &usvgr::Group,
     bbox: usvgr::PathBbox,
     canvas: &mut Canvas,
+    cache: &mut cache::SvgrCache,
 ) -> Option<()> {
     if let Some(ref cp) = g.clip_path {
         // If a `clipPath` child also has a `clip-path`
@@ -85,8 +88,8 @@ fn clip_group(
         let mut clip_canvas = Canvas::from(clip_pixmap.as_mut());
         clip_canvas.transform = canvas.transform;
 
-        draw_group_child(tree, node, &mut clip_canvas);
-        clip(tree, cp, bbox, &mut clip_canvas);
+        draw_group_child(tree, node, &mut clip_canvas, cache);
+        clip(tree, cp, bbox, &mut clip_canvas, cache);
 
         let mut paint = tiny_skia::PixmapPaint::default();
         paint.blend_mode = tiny_skia::BlendMode::Xor;
@@ -103,12 +106,23 @@ fn clip_group(
     Some(())
 }
 
-fn draw_group_child(tree: &usvgr::Tree, node: &usvgr::Node, canvas: &mut Canvas) {
+fn draw_group_child(
+    tree: &usvgr::Tree,
+    node: &usvgr::Node,
+    canvas: &mut Canvas,
+    cache: &mut cache::SvgrCache,
+) {
     if let Some(child) = node.first_child() {
         canvas.apply_transform(child.transform().to_native());
 
         if let usvgr::NodeKind::Path(ref path_node) = *child.borrow() {
-            crate::path::draw(tree, path_node, tiny_skia::BlendMode::SourceOver, canvas);
+            crate::path::draw(
+                tree,
+                path_node,
+                tiny_skia::BlendMode::SourceOver,
+                canvas,
+                cache,
+            );
         }
     }
 }

@@ -5,6 +5,7 @@
 use usvgr::TransformFromBBox;
 
 use crate::{
+    cache::SvgrCache,
     render::{Canvas, RenderState},
     ConvTransform,
 };
@@ -14,6 +15,7 @@ pub fn mask(
     mask: &usvgr::Mask,
     bbox: usvgr::PathBbox,
     canvas: &mut Canvas,
+    cache: &mut SvgrCache,
 ) -> Option<()> {
     let bbox = if mask.units == usvgr::Units::ObjectBoundingBox
         || mask.content_units == usvgr::Units::ObjectBoundingBox
@@ -55,7 +57,13 @@ pub fn mask(
             mask_canvas.apply_transform(usvgr::Transform::from_bbox(bbox).to_native());
         }
 
-        crate::render::render_group(tree, &mask.root, &mut RenderState::Ok, &mut mask_canvas);
+        crate::render::render_group(
+            tree,
+            &mask.root,
+            &mut RenderState::Ok,
+            &mut mask_canvas,
+            cache,
+        );
     }
 
     {
@@ -64,7 +72,7 @@ pub fn mask(
     }
 
     if let Some(ref mask) = mask.mask {
-        self::mask(tree, mask, bbox.to_path_bbox(), canvas);
+        self::mask(tree, mask, bbox.to_path_bbox(), canvas, cache);
     }
 
     let mut paint = tiny_skia::PixmapPaint::default();

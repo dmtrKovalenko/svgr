@@ -216,7 +216,7 @@ impl NonZeroF64 {
 
 /// An element units.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Hash, Copy, PartialEq, Debug)]
 pub enum Units {
     UserSpaceOnUse,
     ObjectBoundingBox,
@@ -233,7 +233,7 @@ impl_enum_from_str!(Units,
 ///
 /// `visibility` attribute in the SVG.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Hash, Copy, PartialEq, Eq, Debug)]
 pub enum Visibility {
     Visible,
     Hidden,
@@ -251,7 +251,7 @@ impl_enum_from_str!(Visibility,
 /// A shape rendering method.
 ///
 /// `shape-rendering` attribute in the SVG.
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 #[allow(missing_docs)]
 pub enum ShapeRendering {
     OptimizeSpeed,
@@ -284,7 +284,7 @@ impl_from_str!(ShapeRendering);
 ///
 /// `text-rendering` attribute in the SVG.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TextRendering {
     OptimizeSpeed,
     OptimizeLegibility,
@@ -355,7 +355,7 @@ impl NodeKind {
 /// therefore we provide only `fill` and `stroke` variants.
 ///
 /// [`paint-order`]: https://www.w3.org/TR/SVG2/painting.html#PaintOrder
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Hash, Copy, PartialEq, Eq, Debug)]
 #[allow(missing_docs)]
 pub enum PaintOrder {
     FillAndStroke,
@@ -369,7 +369,7 @@ impl Default for PaintOrder {
 }
 
 /// A path element.
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Path {
     /// Element's ID.
     ///

@@ -570,6 +570,7 @@ fn render_svg(args: Args, tree: &usvgr::Tree, out_png: &path::Path) -> Result<()
             args.fit_to,
             tiny_skia::Transform::default(),
             pixmap.as_mut(),
+            &mut svgr::SvgrCache::none(),
         );
 
         if args.export_area_page {
@@ -619,6 +620,7 @@ fn render_svg(args: Args, tree: &usvgr::Tree, out_png: &path::Path) -> Result<()
             args.fit_to,
             tiny_skia::Transform::default(),
             pixmap.as_mut(),
+            &mut svgr::SvgrCache::none(),
         );
 
         if args.export_area_drawing {

@@ -2,12 +2,17 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::convert::TryInto;
+use lru::LruCache;
+use std::{borrow::Borrow, convert::TryInto, hash::Hash, num::NonZeroUsize, rc::Rc};
+use tiny_skia::{Pixmap, PixmapMut, PixmapPaint};
+use usvgr::{filter::Blend, FuzzyEq, NodeExt, NodeKind, Transform};
 
-use tiny_skia::{PixmapMut, PixmapPaint};
-use usvgr::{filter::Blend, FuzzyEq, NodeExt, Transform};
+use crate::{
+    cache::{FromPixmap, SvgrCache},
+    ConvTransform,
+};
 
-use crate::ConvTransform;
+type Cache = LruCache<Rc<NodeKind>, Pixmap>;
 
 pub struct Canvas<'a> {
     pub(crate) skip_caching: bool,
@@ -16,18 +21,11 @@ pub struct Canvas<'a> {
     pub clip: Option<tiny_skia::ClipMask>,
 }
 
-pub struct FromPixmap {
-    pub pixmap: tiny_skia::Pixmap,
-    pub tx: i32,
-    pub ty: i32,
-    pub opacity: f32,
-}
-
 impl<'a> From<tiny_skia::PixmapMut<'a>> for Canvas<'a> {
     fn from(pixmap: tiny_skia::PixmapMut<'a>) -> Self {
         Canvas {
-            pixmap,
             skip_caching: false,
+            pixmap,
             transform: tiny_skia::Transform::identity(),
             clip: None,
         }
@@ -72,72 +70,6 @@ impl Canvas<'_> {
             }
         }
     }
-
-    /// Creates sub pixmap that will be cached itself withing a canvas cache. Guarantees empty canvas within closure.  
-    pub fn with_subpixmap_cache(canvas: &mut Canvas, mut f: impl FnMut(&mut Canvas) -> FromPixmap) {
-        let mut pixmap =
-            tiny_skia::Pixmap::new(canvas.pixmap.width(), canvas.pixmap.height()).unwrap();
-        let pixmap_mut = pixmap.as_mut();
-
-        let mut temp_canvas = Canvas {
-            pixmap: pixmap_mut,
-            transform: canvas.transform,
-            skip_caching: true,
-            clip: canvas.clip.clone(),
-        };
-
-        let FromPixmap {
-            pixmap,
-            tx,
-            ty,
-            opacity,
-        } = f(&mut temp_canvas);
-
-        canvas.pixmap.draw_pixmap(
-            tx,
-            ty,
-            pixmap.as_ref(),
-            &PixmapPaint {
-                opacity,
-                blend_mode: tiny_skia::BlendMode::SourceOver,
-                quality: tiny_skia::FilterQuality::Nearest,
-            },
-            tiny_skia::Transform::default(),
-            None,
-        );
-    }
-
-    pub fn with_cache(canvas: &mut Canvas, mut f: impl FnMut(&mut Canvas)) {
-        if canvas.skip_caching {
-            return f(canvas);
-        }
-
-        // safe to unwrap – cloning a pixmap can't fail for dimensions validation.
-        let mut pixmap =
-            tiny_skia::Pixmap::new(canvas.pixmap.width(), canvas.pixmap.height()).unwrap();
-        let pixmap_mut = pixmap.as_mut();
-
-        let mut temp_canvas = Canvas {
-            pixmap: pixmap_mut,
-            transform: canvas.transform,
-            skip_caching: true,
-            clip: canvas.clip.clone(),
-        };
-
-        f(&mut temp_canvas);
-        canvas.pixmap.draw_pixmap(
-            0,
-            0,
-            temp_canvas.pixmap.as_ref(),
-            &PixmapPaint {
-                opacity: 1.0,
-                blend_mode: tiny_skia::BlendMode::SourceOver,
-                quality: tiny_skia::FilterQuality::Nearest,
-            },
-            tiny_skia::Transform::default(),
-            None,
-        );
-    }
 }
 
 /// Indicates the current rendering state.
@@ -156,6 +88,7 @@ pub(crate) fn render_to_canvas(
     tree: &usvgr::Tree,
     img_size: usvgr::ScreenSize,
     canvas: &mut Canvas,
+    cache: &mut SvgrCache
 ) {
     render_node_to_canvas(
         tree,
@@ -164,6 +97,7 @@ pub(crate) fn render_to_canvas(
         img_size,
         &mut RenderState::Ok,
         canvas,
+        cache
     );
 }
 
@@ -174,6 +108,7 @@ pub(crate) fn render_node_to_canvas(
     img_size: usvgr::ScreenSize,
     state: &mut RenderState,
     canvas: &mut Canvas,
+    cache: &mut SvgrCache,
 ) {
     apply_viewbox_transform(view_box, img_size, canvas);
 
@@ -182,7 +117,7 @@ pub(crate) fn render_node_to_canvas(
     let ts = node.abs_transform();
 
     canvas.apply_transform(ts.to_native());
-    render_node(tree, node, state, canvas);
+    render_node(tree, node, state, canvas, cache);
     canvas.transform = curr_ts;
 }
 
@@ -202,13 +137,14 @@ pub(crate) fn render_node(
     node: &usvgr::Node,
     state: &mut RenderState,
     canvas: &mut Canvas,
+    cache: &mut SvgrCache,
 ) -> Option<usvgr::PathBbox> {
     match *node.borrow() {
         usvgr::NodeKind::Path(ref path) => {
-            crate::path::draw(tree, path, tiny_skia::BlendMode::SourceOver, canvas)
+            crate::path::draw(tree, path, tiny_skia::BlendMode::SourceOver, canvas, cache)
         }
         usvgr::NodeKind::Image(ref img) => Some(crate::image::draw(img, canvas)),
-        usvgr::NodeKind::Group(ref g) => render_group_impl(tree, node, g, state, canvas),
+        usvgr::NodeKind::Group(ref g) => render_group_impl(tree, node, g, state, canvas, cache),
     }
 }
 
@@ -217,6 +153,7 @@ pub(crate) fn render_group(
     parent: &usvgr::Node,
     state: &mut RenderState,
     canvas: &mut Canvas,
+    cache: &mut SvgrCache,
 ) -> Option<usvgr::PathBbox> {
     let curr_ts = canvas.transform;
     let mut g_bbox = usvgr::PathBbox::new_bbox();
@@ -236,7 +173,7 @@ pub(crate) fn render_group(
 
         canvas.apply_transform(node.transform().to_native());
 
-        let bbox = render_node(tree, &node, state, canvas);
+        let bbox = render_node(tree, &node, state, canvas, cache);
         if let Some(bbox) = bbox {
             if let Some(bbox) = bbox.transform(&node.transform()) {
                 g_bbox = g_bbox.expand(bbox);
@@ -261,12 +198,13 @@ fn render_group_impl(
     g: &usvgr::Group,
     state: &mut RenderState,
     canvas: &mut Canvas,
+    cache: &mut SvgrCache,
 ) -> Option<usvgr::PathBbox> {
     let mut bbox: Option<usvgr::PathBbox> = None;
     let curr_ts = canvas.transform;
 
-    Canvas::with_subpixmap_cache(canvas, |sub_canvas| {
-        bbox = render_group(tree, node, state, sub_canvas);
+    SvgrCache::with_subpixmap_cache(cache, canvas, |sub_canvas, cache| {
+        bbox = render_group(tree, node, state, sub_canvas, cache);
 
         // At this point, `sub_pixmap` has probably the same size as the viewbox.
         // So instead of clipping, masking and blending the whole viewbox, which can be very expensive,
@@ -310,10 +248,10 @@ fn render_group_impl(
         for filter in &g.filters {
             let bbox = bbox.and_then(|r| r.to_rect());
             let ts = usvgr::Transform::from_native(curr_ts);
-            let background = prepare_filter_background(tree, node, filter, &sub_pixmap);
-            let fill_paint = prepare_filter_fill_paint(tree, node, filter, bbox, ts, &sub_pixmap);
+            let background = prepare_filter_background(tree, node, filter, &sub_pixmap, cache);
+            let fill_paint = prepare_filter_fill_paint(tree, node, filter, bbox, ts, &sub_pixmap, cache);
             let stroke_paint =
-                prepare_filter_stroke_paint(tree, node, filter, bbox, ts, &sub_pixmap);
+                prepare_filter_stroke_paint(tree, node, filter, bbox, ts, &sub_pixmap, cache);
             crate::filter::apply(
                 filter,
                 bbox,
@@ -323,6 +261,7 @@ fn render_group_impl(
                 fill_paint.as_ref(),
                 stroke_paint.as_ref(),
                 &mut sub_pixmap,
+                cache
             )
         }
 
@@ -333,7 +272,7 @@ fn render_group_impl(
                 sub_canvas.skip_caching = true;
                 sub_canvas.translate(-tx as f32, -ty as f32);
                 sub_canvas.apply_transform(curr_ts);
-                crate::clip::clip(tree, clip_path, bbox, &mut sub_canvas);
+                crate::clip::clip(tree, clip_path, bbox, &mut sub_canvas, cache);
             }
 
             if let Some(ref mask) = g.mask {
@@ -341,7 +280,7 @@ fn render_group_impl(
                 sub_canvas.skip_caching = true;
                 sub_canvas.translate(-tx as f32, -ty as f32);
                 sub_canvas.apply_transform(curr_ts);
-                crate::mask::mask(tree, mask, bbox, &mut sub_canvas);
+                crate::mask::mask(tree, mask, bbox, &mut sub_canvas, cache);
             }
         }
 
@@ -351,7 +290,7 @@ fn render_group_impl(
             1.0
         };
 
-        FromPixmap {
+        crate::cache::FromPixmap {
             opacity,
             pixmap: sub_pixmap,
             tx,
@@ -479,6 +418,7 @@ fn prepare_filter_background(
     parent: &usvgr::Node,
     filter: &usvgr::filter::Filter,
     pixmap: &tiny_skia::Pixmap,
+    cache: &mut SvgrCache,
 ) -> Option<tiny_skia::Pixmap> {
     let start_node = parent.filter_background_start_node(filter)?;
 
@@ -496,6 +436,7 @@ fn prepare_filter_background(
         img_size,
         &mut state,
         &mut canvas,
+        cache
     );
 
     Some(pixmap)
@@ -516,6 +457,7 @@ fn prepare_filter_fill_paint(
     bbox: Option<usvgr::Rect>,
     ts: usvgr::Transform,
     pixmap: &tiny_skia::Pixmap,
+    cache: &mut SvgrCache
 ) -> Option<tiny_skia::Pixmap> {
     let region = crate::filter::calc_region(filter, bbox, &ts, pixmap).ok()?;
     let mut sub_pixmap = tiny_skia::Pixmap::new(region.width(), region.height()).unwrap();
@@ -541,6 +483,7 @@ fn prepare_filter_fill_paint(
                 true,
                 tiny_skia::BlendMode::SourceOver,
                 &mut sub_canvas,
+                cache
             );
         }
     }
@@ -557,6 +500,7 @@ fn prepare_filter_stroke_paint(
     bbox: Option<usvgr::Rect>,
     ts: usvgr::Transform,
     pixmap: &tiny_skia::Pixmap,
+    cache: &mut SvgrCache,
 ) -> Option<tiny_skia::Pixmap> {
     let region = crate::filter::calc_region(filter, bbox, &ts, pixmap).ok()?;
     let mut sub_pixmap = tiny_skia::Pixmap::new(region.width(), region.height()).unwrap();
@@ -582,6 +526,7 @@ fn prepare_filter_stroke_paint(
                 true,
                 tiny_skia::BlendMode::SourceOver,
                 &mut sub_canvas,
+                cache
             );
         }
     }

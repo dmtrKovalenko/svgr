@@ -15,7 +15,7 @@ use crate::{Color, Group, Node, NodeKind, NormalizedF64, Opacity, OptionLog, Pai
 ///
 /// `spreadMethod` attribute in the SVG.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Hash, Copy, PartialEq, Debug)]
 pub enum SpreadMethod {
     Pad,
     Reflect,
@@ -31,7 +31,7 @@ impl_enum_from_str!(SpreadMethod,
 );
 
 /// A generic gradient.
-#[derive(Clone, Debug)]
+#[derive(Clone, Hash, Debug)]
 pub struct BaseGradient {
     /// Coordinate system units.
     ///
@@ -73,6 +73,18 @@ pub struct LinearGradient {
     pub base: BaseGradient,
 }
 
+impl std::hash::Hash for LinearGradient { 
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) { 
+        self.id.hash(state); 
+        self.x1.to_bits().hash(state);
+        self.y1.to_bits().hash(state);
+        self.x2.to_bits().hash(state);
+        self.y2.to_bits().hash(state);
+        self.base.hash(state);
+    } 
+}
+
+
 impl std::ops::Deref for LinearGradient {
     type Target = BaseGradient;
 
@@ -103,6 +115,18 @@ pub struct RadialGradient {
     pub base: BaseGradient,
 }
 
+impl std::hash::Hash for RadialGradient { 
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) { 
+        self.id.hash(state); 
+        self.cx.to_bits().hash(state);
+        self.cy.to_bits().hash(state);
+        self.r.hash(state);
+        self.fx.to_bits().hash(state);
+        self.fy.to_bits().hash(state);
+        self.base.hash(state);
+    } 
+}
+
 impl std::ops::Deref for RadialGradient {
     type Target = BaseGradient;
 
@@ -117,7 +141,7 @@ pub type StopOffset = NormalizedF64;
 /// Gradient's stop element.
 ///
 /// `stop` element in SVG.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Hash, Copy, Debug)]
 pub struct Stop {
     /// Gradient stop offset.
     ///
@@ -174,6 +198,18 @@ pub struct Pattern {
     ///
     /// The root node is always `Group`.
     pub root: Node,
+}
+
+impl std::hash::Hash for Pattern { 
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) { 
+        // hash over all keys except root because we already capturing unique id hash
+        self.id.hash(state); 
+        self.units.hash(state);
+        self.content_units.hash(state);
+        self.transform.hash(state);
+        self.rect.hash(state);
+        self.view_box.hash(state);
+    }  
 }
 
 pub(crate) enum ServerOrColor {

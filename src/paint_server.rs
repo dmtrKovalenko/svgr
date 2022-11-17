@@ -5,6 +5,7 @@
 use usvgr::TransformFromBBox;
 
 use crate::{
+    cache::SvgrCache,
     render::{Canvas, RenderState},
     ConvTransform, OptionLog,
 };
@@ -17,6 +18,7 @@ pub fn fill(
     anti_alias: bool,
     blend_mode: tiny_skia::BlendMode,
     canvas: &mut Canvas,
+    cache: &mut SvgrCache,
 ) -> Option<()> {
     let pattern_pixmap;
 
@@ -35,7 +37,8 @@ pub fn fill(
         }
         usvgr::Paint::Pattern(ref pattern) => {
             let global_ts = usvgr::Transform::from_native(canvas.transform);
-            let (patt_pix, patt_ts) = prepare_pattern_pixmap(tree, pattern, &global_ts, bbox)?;
+            let (patt_pix, patt_ts) =
+                prepare_pattern_pixmap(tree, pattern, &global_ts, bbox, cache)?;
 
             pattern_pixmap = patt_pix;
             paint.shader = prepare_pattern(&pattern_pixmap, patt_ts, opacity);
@@ -66,6 +69,7 @@ pub fn stroke(
     anti_alias: bool,
     blend_mode: tiny_skia::BlendMode,
     canvas: &mut Canvas,
+    cache: &mut SvgrCache,
 ) -> Option<()> {
     let pattern_pixmap;
 
@@ -86,7 +90,8 @@ pub fn stroke(
             }
             usvgr::Paint::Pattern(ref pattern) => {
                 let global_ts = usvgr::Transform::from_native(canvas.transform);
-                let (patt_pix, patt_ts) = prepare_pattern_pixmap(tree, pattern, &global_ts, bbox)?;
+                let (patt_pix, patt_ts) =
+                    prepare_pattern_pixmap(tree, pattern, &global_ts, bbox, cache)?;
 
                 pattern_pixmap = patt_pix;
                 paint.shader = prepare_pattern(&pattern_pixmap, patt_ts, opacity);
@@ -244,6 +249,7 @@ fn prepare_pattern_pixmap(
     pattern: &usvgr::Pattern,
     global_ts: &usvgr::Transform,
     bbox: usvgr::PathBbox,
+    cache: &mut SvgrCache,
 ) -> Option<(tiny_skia::Pixmap, usvgr::Transform)> {
     let r = if pattern.units == usvgr::Units::ObjectBoundingBox {
         let bbox = bbox
@@ -275,7 +281,13 @@ fn prepare_pattern_pixmap(
         canvas.scale(bbox.width() as f32, bbox.height() as f32);
     }
 
-    crate::render::render_group(tree, &pattern.root, &mut RenderState::Ok, &mut canvas);
+    crate::render::render_group(
+        tree,
+        &pattern.root,
+        &mut RenderState::Ok,
+        &mut canvas,
+        cache,
+    );
 
     let mut ts = usvgr::Transform::default();
     ts.append(&pattern.transform);
