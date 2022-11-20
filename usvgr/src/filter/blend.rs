@@ -8,7 +8,7 @@ use crate::svgtree::{self, AId};
 /// A blend filter primitive.
 ///
 /// `feBlend` element in the SVG.
-#[derive(Clone, Debug)]
+#[derive(Clone, Hash, Debug)]
 pub struct Blend {
     /// Identifies input for the given filter primitive.
     ///
@@ -28,7 +28,7 @@ pub struct Blend {
 
 /// An images blending mode.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Hash, Copy, PartialEq, Eq, Debug)]
 pub enum BlendMode {
     Normal,
     Multiply,

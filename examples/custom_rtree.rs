@@ -63,6 +63,7 @@ fn main() {
         usvgr::FitTo::Original,
         tiny_skia::Transform::default(),
         pixmap.as_mut(),
+        &mut svgr::SvgrCache::none()
     )
     .unwrap();
     pixmap.save_png("out.png").unwrap();

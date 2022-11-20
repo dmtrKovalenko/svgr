@@ -39,6 +39,15 @@ pub struct ClipPath {
     pub root: Node,
 }
 
+impl std::hash::Hash for ClipPath {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.units.hash(state);
+        self.transform.hash(state);
+        self.clip_path.hash(state);
+    }
+}
+
 impl Default for ClipPath {
     fn default() -> Self {
         ClipPath {

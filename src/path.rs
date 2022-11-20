@@ -2,57 +2,61 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::render::Canvas;
+use crate::{cache::SvgrCache, render::Canvas};
 
 pub fn draw(
     tree: &usvgr::Tree,
     path: &usvgr::Path,
+    parent: &usvgr::Node,
     blend_mode: tiny_skia::BlendMode,
     canvas: &mut Canvas,
+    cache: &mut SvgrCache,
 ) -> Option<usvgr::PathBbox> {
     let bbox = path.data.bbox();
     if path.visibility != usvgr::Visibility::Visible {
         return bbox;
     }
 
-    // `usvgr` guaranties that path without a bbox will not use
-    // a paint server with ObjectBoundingBox,
-    // so we can pass whatever rect we want, because it will not be used anyway.
-    let style_bbox = bbox.unwrap_or_else(|| usvgr::PathBbox::new(0.0, 0.0, 1.0, 1.0).unwrap());
-
     let skia_path = convert_path(&path.data)?;
 
-    let antialias = path.rendering_mode.use_shape_antialiasing();
+    cache.with_cache(canvas, parent, |canvas, cache| {
+        // `usvgr` guaranties that path without a bbox will not use
+        // a paint server with ObjectBoundingBox,
+        // so we can pass whatever rect we want, because it will not be used anyway.
+        let style_bbox = bbox.unwrap_or_else(|| usvgr::PathBbox::new(0.0, 0.0, 1.0, 1.0).unwrap());
+        let antialias = path.rendering_mode.use_shape_antialiasing();
 
-    let fill_path = |canvas| {
-        if let Some(ref fill) = path.fill {
-            crate::paint_server::fill(
-                tree, fill, style_bbox, &skia_path, antialias, blend_mode, canvas,
-            );
+        let fill_path = |canvas, cache| {
+            if let Some(ref fill) = path.fill {
+                crate::paint_server::fill(
+                    tree, fill, style_bbox, &skia_path, antialias, blend_mode, canvas, cache,
+                );
+            }
+        };
+
+        let stroke_path = |canvas, cache| {
+            if path.stroke.is_some() {
+                crate::paint_server::stroke(
+                    tree,
+                    &path.stroke,
+                    style_bbox,
+                    &skia_path,
+                    antialias,
+                    blend_mode,
+                    canvas,
+                    cache,
+                );
+            }
+        };
+
+        if path.paint_order == usvgr::PaintOrder::FillAndStroke {
+            fill_path(canvas, cache);
+            stroke_path(canvas, cache);
+        } else {
+            stroke_path(canvas, cache);
+            fill_path(canvas, cache);
         }
-    };
-
-    let stroke_path = |canvas| {
-        if path.stroke.is_some() {
-            crate::paint_server::stroke(
-                tree,
-                &path.stroke,
-                style_bbox,
-                &skia_path,
-                antialias,
-                blend_mode,
-                canvas,
-            );
-        }
-    };
-
-    if path.paint_order == usvgr::PaintOrder::FillAndStroke {
-        fill_path(canvas);
-        stroke_path(canvas);
-    } else {
-        stroke_path(canvas);
-        fill_path(canvas);
-    }
+    });
 
     bbox
 }

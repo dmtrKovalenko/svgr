@@ -9,7 +9,7 @@ use usvgr::{FuzzyZero, NodeExt, TransformFromBBox};
 
 use crate::{
     render::{Canvas, RenderState},
-    ConvTransform,
+    ConvTransform, cache::SvgrCache,
 };
 
 macro_rules! into_svgfilters_image {
@@ -249,6 +249,7 @@ pub fn apply(
     fill_paint: Option<&tiny_skia::Pixmap>,
     stroke_paint: Option<&tiny_skia::Pixmap>,
     source: &mut tiny_skia::Pixmap,
+    cache: &mut SvgrCache
 ) {
     let res = {
         let inputs = FilterInputs {
@@ -258,7 +259,7 @@ pub fn apply(
             stroke_paint,
         };
 
-        _apply(filter, &inputs, bbox, ts, tree)
+        _apply(filter, &inputs, bbox, ts, tree, cache)
     };
 
     let res = res.and_then(|(image, region)| apply_to_canvas(image, region, source));
@@ -283,6 +284,7 @@ fn _apply(
     bbox: Option<usvgr::Rect>,
     ts: &usvgr::Transform,
     tree: &usvgr::Tree,
+    cache: &mut SvgrCache
 ) -> Result<(Image, usvgr::ScreenRect), Error> {
     let mut results = Vec::new();
     let region = calc_region(filter, bbox, ts, inputs.source)?;
@@ -320,7 +322,7 @@ fn _apply(
                 let input = get_input(&fe.input, region, inputs, &results)?;
                 apply_tile(input, region)
             }
-            usvgr::filter::Kind::Image(ref fe) => apply_image(fe, region, subregion, tree, ts),
+            usvgr::filter::Kind::Image(ref fe) => apply_image(fe, region, subregion, tree, ts, cache),
             usvgr::filter::Kind::ComponentTransfer(ref fe) => {
                 let input = get_input(&fe.input, region, inputs, &results)?;
                 apply_component_transfer(fe, cs, input)
@@ -932,6 +934,7 @@ fn apply_image(
     subregion: usvgr::ScreenRect,
     tree: &usvgr::Tree,
     ts: &usvgr::Transform,
+    cache: &mut SvgrCache
 ) -> Result<Image, Error> {
     let mut pixmap = tiny_skia::Pixmap::try_create(region.width(), region.height())?;
     let mut canvas = Canvas::from(pixmap.as_mut());
@@ -954,7 +957,7 @@ fn apply_image(
             canvas.scale(sx as f32, sy as f32);
             canvas.apply_transform(node.transform().to_native());
 
-            crate::render::render_node(tree, node, &mut RenderState::Ok, &mut canvas);
+            crate::render::render_node(tree, node, &mut RenderState::Ok, &mut canvas, cache);
         }
     }
 

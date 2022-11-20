@@ -25,7 +25,9 @@ mod mask;
 mod paint_server;
 mod path;
 mod render;
+mod cache;
 
+pub use cache::SvgrCache;
 pub use crate::render::trim_transparency;
 
 trait OptionLog {
@@ -83,11 +85,12 @@ pub fn render(
     fit_to: usvgr::FitTo,
     transform: tiny_skia::Transform,
     pixmap: tiny_skia::PixmapMut,
+    cache: &mut cache::SvgrCache,
 ) -> Option<()> {
     let size = fit_to.fit_to(tree.size.to_screen_size())?;
     let mut canvas = render::Canvas::from(pixmap);
     canvas.apply_transform(transform);
-    render::render_to_canvas(tree, size, &mut canvas);
+    render::render_to_canvas(tree, size, &mut canvas, cache);
     Some(())
 }
 
@@ -104,6 +107,7 @@ pub fn render_node(
     fit_to: usvgr::FitTo,
     transform: tiny_skia::Transform,
     pixmap: tiny_skia::PixmapMut,
+    cache: &mut cache::SvgrCache,
 ) -> Option<()> {
     let node_bbox = if let Some(bbox) = node.calculate_bbox().and_then(|r| r.to_rect()) {
         bbox
@@ -127,6 +131,7 @@ pub fn render_node(
         size,
         &mut render::RenderState::Ok,
         &mut canvas,
+        cache
     );
     Some(())
 }

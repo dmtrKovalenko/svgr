@@ -36,9 +36,19 @@ pub struct DisplacementMap {
     pub y_channel_selector: ColorChannel,
 }
 
+impl std::hash::Hash for DisplacementMap {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.input1.hash(state);
+        self.input2.hash(state);
+        self.scale.to_bits().hash(state);
+        self.x_channel_selector.hash(state);
+        self.y_channel_selector.hash(state);
+    }
+}
+
 /// A color channel.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Hash, Copy, PartialEq, Debug)]
 pub enum ColorChannel {
     R,
     G,

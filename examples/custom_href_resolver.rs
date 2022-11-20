@@ -1,3 +1,4 @@
+use svgr::SvgrCache;
 use usvgr::PreloadedImageData;
 
 fn main() {
@@ -27,6 +28,7 @@ fn main() {
         usvgr::FitTo::Original,
         tiny_skia::Transform::default(),
         pixmap.as_mut(),
+        &mut SvgrCache::none()
     )
     .unwrap();
 

@@ -9,7 +9,7 @@ use crate::{Color, Opacity, SvgColorExt};
 /// A flood filter primitive.
 ///
 /// `feFlood` element in the SVG.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Hash, Copy, Debug)]
 pub struct Flood {
     /// A flood color.
     ///

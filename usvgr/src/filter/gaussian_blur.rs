@@ -10,7 +10,7 @@ use crate::svgtree::{self, AId};
 /// A Gaussian blur filter primitive.
 ///
 /// `feGaussianBlur` element in the SVG.
-#[derive(Clone, Debug)]
+#[derive(Clone, Hash, Debug)]
 pub struct GaussianBlur {
     /// Identifies input for the given filter primitive.
     ///

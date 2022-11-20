@@ -1,0 +1,7 @@
+<svg id='svg1' viewBox='0 0 2000 2000' xmlns='http://www.w3.org/2000/svg'>
+  <filter id='blurMe'>
+    <feGaussianBlur stdDeviation='5' />
+  </filter>
+
+  <rect id='rect1' x='2' y='0' filter='url(#blurMe)' width='1000' height='1000' fill='green' />
+</svg>

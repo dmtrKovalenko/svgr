@@ -8,7 +8,7 @@ use crate::svgtree::{self, AId};
 /// A merge filter primitive.
 ///
 /// `feMerge` element in the SVG.
-#[derive(Clone, Debug)]
+#[derive(Clone, Hash, Debug)]
 pub struct Merge {
     /// List of input layers that should be merged.
     ///

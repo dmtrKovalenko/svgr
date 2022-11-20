@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 use crate::svgtree::{self, AId};
@@ -69,7 +70,7 @@ wrap!(StrokeMiterlimit);
 ///
 /// `stroke-linecap` attribute in the SVG.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, Hash, PartialEq, Debug)]
 pub enum LineCap {
     Butt,
     Round,
@@ -88,7 +89,7 @@ impl_enum_from_str!(LineCap,
 ///
 /// `stroke-linejoin` attribute in the SVG.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Hash, Copy, PartialEq, Debug)]
 pub enum LineJoin {
     Miter,
     Round,
@@ -117,6 +118,37 @@ pub struct Stroke {
     pub linejoin: LineJoin,
 }
 
+impl Eq for Stroke {}
+
+impl PartialEq for Stroke {
+    fn eq(&self, other: &Self) -> bool {
+        self.paint == other.paint
+            && self.dasharray == other.dasharray
+            && self.dashoffset == other.dashoffset
+            && self.miterlimit == other.miterlimit
+            && self.opacity == other.opacity
+            && self.width == other.width
+            && self.linecap == other.linecap
+            && self.linejoin == other.linejoin
+    }
+}
+
+impl Hash for Stroke {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.paint.hash(state);
+        self.dasharray
+            .as_ref()
+            .map(|vec| vec.iter().map(|v| v.to_bits()).collect::<Vec<_>>())
+            .hash(state);
+
+        self.miterlimit.0.to_bits().hash(state);
+        self.opacity.hash(state);
+        self.width.hash(state);
+        self.linecap.hash(state);
+        self.linejoin.hash(state);
+    }
+}
+
 impl Default for Stroke {
     fn default() -> Self {
         Stroke {
@@ -138,7 +170,7 @@ impl Default for Stroke {
 ///
 /// `fill-rule` attribute in the SVG.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Hash, Copy, PartialEq, Eq, Debug)]
 pub enum FillRule {
     NonZero,
     EvenOdd,
@@ -153,7 +185,7 @@ impl_enum_from_str!(FillRule,
 
 /// A fill style.
 #[allow(missing_docs)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct Fill {
     pub paint: Paint,
     pub opacity: Opacity,
@@ -183,7 +215,7 @@ impl Default for Fill {
 }
 
 /// A 8-bit RGB color.
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Hash, Copy, PartialEq, Debug)]
 #[allow(missing_docs)]
 pub struct Color {
     pub red: u8,
@@ -261,6 +293,14 @@ impl PartialEq for Paint {
             (Self::Pattern(ref p1), Self::Pattern(ref p2)) => Rc::ptr_eq(p1, p2),
             _ => false,
         }
+    }
+}
+
+impl Eq for Paint {}
+
+impl std::hash::Hash for Paint {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        core::mem::discriminant(self).hash(state);
     }
 }
 

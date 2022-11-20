@@ -2,13 +2,15 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::hash::Hash;
+
 use super::{Input, Kind, Primitive};
 use crate::svgtree::{self, AId, EId};
 
 /// A component-wise remapping filter primitive.
 ///
 /// `feComponentTransfer` element in the SVG.
-#[derive(Clone, Debug)]
+#[derive(Clone, Hash, Debug)]
 pub struct ComponentTransfer {
     /// Identifies input for the given filter primitive.
     ///
@@ -57,6 +59,45 @@ pub enum TransferFunction {
         exponent: f64,
         offset: f64,
     },
+}
+
+impl Hash for TransferFunction {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            TransferFunction::Identity => 0.hash(state),
+            TransferFunction::Table(values) => {
+                1u8.hash(state);
+                values
+                    .iter()
+                    .map(|f| f.to_bits().hash(state))
+                    .collect::<Vec<_>>()
+                    .hash(state);
+            }
+            TransferFunction::Discrete(values) => {
+                2u8.hash(state);
+                values
+                    .iter()
+                    .map(|f| f.to_bits().hash(state))
+                    .collect::<Vec<_>>()
+                    .hash(state);
+            }
+            TransferFunction::Linear { slope, intercept } => {
+                3u8.hash(state);
+                slope.to_bits().hash(state);
+                intercept.to_bits().hash(state);
+            }
+            TransferFunction::Gamma {
+                amplitude,
+                exponent,
+                offset,
+            } => {
+                4u8.hash(state);
+                amplitude.to_bits().hash(state);
+                exponent.to_bits().hash(state);
+                offset.to_bits().hash(state);
+            }
+        }
+    }
 }
 
 pub(crate) fn convert(fe: svgtree::Node, primitives: &[Primitive]) -> Kind {

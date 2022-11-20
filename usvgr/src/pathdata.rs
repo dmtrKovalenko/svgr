@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::rc::Rc;
+use std::{hash::Hash, rc::Rc};
 
 use kurbo::{ParamCurve, ParamCurveArclen, ParamCurveExtrema};
 
@@ -10,7 +10,7 @@ use crate::{FuzzyZero, PathBbox, Rect, Transform};
 
 /// A path command.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Hash, Copy, PartialEq, Eq, Debug)]
 pub enum PathCommand {
     MoveTo,
     LineTo,
@@ -51,6 +51,25 @@ pub enum PathSegment {
 pub struct PathData {
     commands: Vec<PathCommand>,
     points: Vec<f64>,
+}
+
+impl Eq for PathData {}
+
+impl PartialEq for PathData {
+    fn eq(&self, other: &Self) -> bool {
+        self.commands == other.commands && self.points == other.points
+    }
+}
+
+impl std::hash::Hash for PathData {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.commands.hash(state);
+        self.points
+            .iter()
+            .map(|f| f.to_bits())
+            .collect::<Vec<_>>()
+            .hash(state);
+    }
 }
 
 /// A reference-counted `PathData`.

@@ -24,6 +24,14 @@ pub struct Offset {
     pub dy: f64,
 }
 
+impl std::hash::Hash for Offset {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.input.hash(state);
+        self.dx.to_bits().hash(state);
+        self.dy.to_bits().hash(state);
+    }
+}
+
 pub(crate) fn convert(
     fe: svgtree::Node,
     primitives: &[Primitive],
