@@ -63,7 +63,7 @@ pub(crate) fn convert_diffuse(fe: svgtree::Node, primitives: &[Primitive]) -> Op
 /// A specular lighting filter primitive.
 ///
 /// `feSpecularLighting` element in the SVG.
-#[derive(Clone, Hash, Debug)]
+#[derive(Clone, Debug)]
 pub struct SpecularLighting {
     /// Identifies input for the given filter primitive.
     ///
@@ -94,6 +94,17 @@ pub struct SpecularLighting {
 
     /// A light source.
     pub light_source: LightSource,
+}
+
+impl std::hash::Hash for SpecularLighting {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.input.hash(state);
+        self.surface_scale.to_bits().hash(state);
+        self.specular_constant.to_bits().hash(state);
+        self.specular_exponent.to_bits().hash(state);
+        self.lighting_color.hash(state);
+        self.light_source.hash(state);
+    }
 }
 
 pub(crate) fn convert_specular(fe: svgtree::Node, primitives: &[Primitive]) -> Option<Kind> {

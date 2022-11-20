@@ -10,7 +10,7 @@ use crate::svgtree::{self, AId};
 /// An offset filter primitive.
 ///
 /// `feOffset` element in the SVG.
-#[derive(Clone, Hash, Debug)]
+#[derive(Clone, Debug)]
 pub struct Offset {
     /// Identifies input for the given filter primitive.
     ///
@@ -22,6 +22,14 @@ pub struct Offset {
 
     /// The amount to offset the input graphic along the Y-axis.
     pub dy: f64,
+}
+
+impl std::hash::Hash for Offset {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.input.hash(state);
+        self.dx.to_bits().hash(state);
+        self.dy.to_bits().hash(state);
+    }
 }
 
 pub(crate) fn convert(
