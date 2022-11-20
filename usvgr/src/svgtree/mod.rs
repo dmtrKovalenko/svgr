@@ -830,17 +830,20 @@ impl AId {
                 | AId::FloodColor
                 | AId::FloodOpacity
                 | AId::FontFamily
+                | AId::FontKerning
                 | AId::FontSize
                 | AId::FontStretch
                 | AId::FontStyle
                 | AId::FontVariant
                 | AId::FontWeight
                 | AId::ImageRendering
+                | AId::Isolation
                 | AId::LetterSpacing
                 | AId::MarkerEnd
                 | AId::MarkerMid
                 | AId::MarkerStart
                 | AId::Mask
+                | AId::MixBlendMode
                 | AId::Opacity
                 | AId::Overflow
                 | AId::PaintOrder
@@ -875,13 +878,15 @@ impl AId {
     pub fn allows_inherit_value(&self) -> bool {
         matches!(
             self,
-            AId::BaselineShift
+            AId::AlignmentBaseline
+                | AId::BaselineShift
                 | AId::ClipPath
                 | AId::ClipRule
                 | AId::Color
                 | AId::ColorInterpolationFilters
                 | AId::Direction
                 | AId::Display
+                | AId::DominantBaseline
                 | AId::Fill
                 | AId::FillOpacity
                 | AId::FillRule
@@ -889,12 +894,14 @@ impl AId {
                 | AId::FloodColor
                 | AId::FloodOpacity
                 | AId::FontFamily
+                | AId::FontKerning
                 | AId::FontSize
                 | AId::FontStretch
                 | AId::FontStyle
                 | AId::FontVariant
                 | AId::FontWeight
                 | AId::ImageRendering
+                | AId::Kerning
                 | AId::LetterSpacing
                 | AId::MarkerEnd
                 | AId::MarkerMid
@@ -926,9 +933,11 @@ impl AId {
 fn is_non_inheritable(id: AId) -> bool {
     matches!(
         id,
-        AId::BaselineShift
+        AId::AlignmentBaseline
+            | AId::BaselineShift
             | AId::ClipPath
             | AId::Display
+            | AId::DominantBaseline
             | AId::Filter
             | AId::FloodColor
             | AId::FloodOpacity

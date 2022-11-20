@@ -227,6 +227,7 @@ fn render_group_impl(
             return FromPixmap {
                 opacity: 1.0,
                 pixmap: sub_pixmap,
+                blend_mode: convert_blend_mode(g.blend_mode),
                 tx,
                 ty,
             };
@@ -286,6 +287,7 @@ fn render_group_impl(
             pixmap: sub_pixmap,
             tx,
             ty,
+            blend_mode: convert_blend_mode(g.blend_mode),
         }
     });
 
@@ -523,4 +525,25 @@ fn prepare_filter_stroke_paint(
     }
 
     Some(sub_pixmap)
+}
+
+fn convert_blend_mode(mode: usvgr::BlendMode) -> tiny_skia::BlendMode {
+    match mode {
+        usvgr::BlendMode::Normal => tiny_skia::BlendMode::SourceOver,
+        usvgr::BlendMode::Multiply => tiny_skia::BlendMode::Multiply,
+        usvgr::BlendMode::Screen => tiny_skia::BlendMode::Screen,
+        usvgr::BlendMode::Overlay => tiny_skia::BlendMode::Overlay,
+        usvgr::BlendMode::Darken => tiny_skia::BlendMode::Darken,
+        usvgr::BlendMode::Lighten => tiny_skia::BlendMode::Lighten,
+        usvgr::BlendMode::ColorDodge => tiny_skia::BlendMode::ColorDodge,
+        usvgr::BlendMode::ColorBurn => tiny_skia::BlendMode::ColorBurn,
+        usvgr::BlendMode::HardLight => tiny_skia::BlendMode::HardLight,
+        usvgr::BlendMode::SoftLight => tiny_skia::BlendMode::SoftLight,
+        usvgr::BlendMode::Difference => tiny_skia::BlendMode::Difference,
+        usvgr::BlendMode::Exclusion => tiny_skia::BlendMode::Exclusion,
+        usvgr::BlendMode::Hue => tiny_skia::BlendMode::Hue,
+        usvgr::BlendMode::Saturation => tiny_skia::BlendMode::Saturation,
+        usvgr::BlendMode::Color => tiny_skia::BlendMode::Color,
+        usvgr::BlendMode::Luminosity => tiny_skia::BlendMode::Luminosity,
+    }
 }

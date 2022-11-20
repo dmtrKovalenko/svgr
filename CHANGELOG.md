@@ -8,6 +8,23 @@ This changelog also contains important changes in dependencies.
 
 ## [Unreleased]
 
+## [0.26.0] - 2022-11-20
+### Added
+- Minimal `dominant-baseline` and `alignment-baseline` support.
+- `mix-blend-mode` and `isolation` support. SVG2
+- Allow writing resvg output to stdout.
+- Allow disabling text kerning using `kerning="0"` and `style="font-kerning:none"`. SVG2
+- Allow `<percentage>` values for `opacity`, `fill-opacity`, `stroke-opacity`,
+  `flood-opacity` and `stop-opacity` attributes.<br>
+  You can write `opacity="50%"` now. SVG2
+
+### Changed
+- Disable focal point correction on radial gradients to conform with SVG 2. SVG2
+- Update `feMorphology` radius value resolving.
+
+### Fixed
+- Do not clip nested `svg` when only the `viewBox` attribute is present.
+
 ## [0.25.0] - 2022-10-30
 ### Added
 - Partial `paint-order` attribute support.
@@ -660,7 +677,9 @@ This changelog also contains important changes in dependencies.
 ### Fixed
 - `font-size` attribute inheritance during `use` resolving.
 
-[Unreleased]: https://github.com/RazrFalcon/resvg/compare/v0.24.0...HEAD
+[Unreleased]: https://github.com/RazrFalcon/resvg/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/RazrFalcon/resvg/compare/v0.25.0...v0.26.0
+[0.25.0]: https://github.com/RazrFalcon/resvg/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/RazrFalcon/resvg/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/RazrFalcon/resvg/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/RazrFalcon/resvg/compare/v0.21.0...v0.22.0

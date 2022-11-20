@@ -220,6 +220,11 @@ pub(super) fn parse_svg_element(
             continue;
         }
 
+        // For some reason those properties are allowed only inside a `style` attribute and CSS.
+        if matches!(aid, AId::MixBlendMode | AId::Isolation | AId::FontKerning) {
+            continue;
+        }
+
         append_attribute(parent_id, tag_name, aid, attr.value(), doc);
     }
 
@@ -360,6 +365,7 @@ fn parse_svg_attribute(tag_name: EId, aid: AId, value: &str) -> Option<Attribute
         | AId::RefY
         | AId::Width
         | AId::Height
+        | AId::Kerning
         | AId::MarkerWidth
         | AId::MarkerHeight
         | AId::StartOffset => AttributeValue::Length(svgrtypes::Length::from_str(value).ok()?),
@@ -388,8 +394,14 @@ fn parse_svg_attribute(tag_name: EId, aid: AId, value: &str) -> Option<Attribute
         | AId::FloodOpacity
         | AId::StrokeOpacity
         | AId::StopOpacity => {
-            let n = svgrtypes::Number::from_str(value).ok()?.0;
-            AttributeValue::Opacity(Opacity::new_clamped(n))
+            let length = svgrtypes::Length::from_str(value).ok()?;
+            if length.unit == svgrtypes::LengthUnit::Percent {
+                AttributeValue::Opacity(Opacity::new_clamped(length.number / 100.0))
+            } else if length.unit == svgrtypes::LengthUnit::None {
+                AttributeValue::Opacity(Opacity::new_clamped(length.number))
+            } else {
+                return None;
+            }
         }
 
         AId::Amplitude

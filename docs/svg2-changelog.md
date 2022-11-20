@@ -19,6 +19,7 @@ NOTE: This list is not final. This just things I was able to find so far. Patche
 - [x] [`rgba()`](https://www.w3.org/TR/css-color-3/#rgba-color), [`hsl()`](https://www.w3.org/TR/css-color-3/#hsl-color) and [`hsla()`](https://www.w3.org/TR/css-color-3/#hsla-color) notations to [`<color>`](https://www.w3.org/TR/css-color-3/#colorunits).
 - [x] A [`transparent`](https://www.w3.org/TR/css-color-3/#transparent) keyword to [`<color>`](https://www.w3.org/TR/css-color-3/#colorunits).
 - [x] A `#RRGGBBAA` and `#RGBA` notation for colors. Part of [CSS Color 4](https://www.w3.org/TR/css-color-4/#hex-notation).
+- [x] A [`opacity`](https://www.w3.org/TR/css-color-4/#transparency) property allows `<percentage>` now.
 
 ### Changed
 
@@ -109,7 +110,7 @@ NOTE: This list is not final. This just things I was able to find so far. Patche
 - [ ] A [`path`](https://www.w3.org/TR/SVG2/text.html#TextPathElementPathAttribute) property to [`textPath`](https://www.w3.org/TR/SVG2/text.html#TextPathElement).
 - [ ] A [`side`](https://www.w3.org/TR/SVG2/text.html#TextPathElementSideAttribute) property to [`textPath`](https://www.w3.org/TR/SVG2/text.html#TextPathElement).
 - [ ] A [`font-feature-settings`](https://www.w3.org/TR/css-fonts-3/#propdef-font-feature-settings) property.
-- [ ] A [`font-kerning`](https://www.w3.org/TR/css-fonts-3/#propdef-font-kerning) property.
+- [x] A [`font-kerning`](https://www.w3.org/TR/css-fonts-3/#propdef-font-kerning) property.
 - [ ] A [`font-synthesis`](https://www.w3.org/TR/css-fonts-3/#propdef-font-synthesis) property.
 - [ ] A [`font-variant-caps`](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant-caps) property.
 - [ ] A [`font-variant-east-asian`](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant-east-asian) property.
@@ -187,8 +188,8 @@ NOTE: This list is not final. This just things I was able to find so far. Patche
 - [ ] A `miter-clip` variant to the [`stroke-linejoin`](https://www.w3.org/TR/SVG2/painting.html#LineJoin) property.
 - [x] (partial support) A [`paint-order`](https://www.w3.org/TR/SVG2/painting.html#PaintOrder) property.
 - [ ] `context-fill` and `context-stroke` variants to the [`<paint>`](https://www.w3.org/TR/SVG2/painting.html#SpecifyingPaint) type.
-- [ ] A [`mix-blend-mode`](https://www.w3.org/TR/compositing-1/#mix-blend-mode) property.
-- [ ] An [`isolation`](https://www.w3.org/TR/compositing-1/#isolation) property.
+- [x] A [`mix-blend-mode`](https://www.w3.org/TR/compositing-1/#mix-blend-mode) property.
+- [x] An [`isolation`](https://www.w3.org/TR/compositing-1/#isolation) property.
 - [ ] `left`, `center` and `right` variants to `refX` and `refY` properties of the the [`marker`](https://www.w3.org/TR/SVG2/painting.html#MarkerElement) element.
 - [ ] A `auto-start-reverse` variant to [`orient`](https://www.w3.org/TR/SVG2/painting.html#OrientAttribute) property of the the [`marker`](https://www.w3.org/TR/SVG2/painting.html#MarkerElement) element
 

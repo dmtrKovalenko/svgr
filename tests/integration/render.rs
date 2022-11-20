@@ -44,6 +44,26 @@ use crate::render;
 #[test]fn a_display_008() { assert_eq!(render("a-display-008"), 0); }
 #[test]fn a_display_009() { assert_eq!(render("a-display-009"), 0); }
 #[test]fn a_dominant_baseline_001() { assert_eq!(render("a-dominant-baseline-001"), 0); }
+#[test] fn a_dominant_baseline_002() { assert_eq!(render("a-dominant-baseline-002"), 0); }
+#[test] fn a_dominant_baseline_003() { assert_eq!(render("a-dominant-baseline-003"), 0); }
+#[test] fn a_dominant_baseline_004() { assert_eq!(render("a-dominant-baseline-004"), 0); }
+#[test] fn a_dominant_baseline_005() { assert_eq!(render("a-dominant-baseline-005"), 0); }
+#[test] fn a_dominant_baseline_006() { assert_eq!(render("a-dominant-baseline-006"), 0); }
+#[test] fn a_dominant_baseline_007() { assert_eq!(render("a-dominant-baseline-007"), 0); }
+#[test] fn a_dominant_baseline_008() { assert_eq!(render("a-dominant-baseline-008"), 0); }
+#[test] fn a_dominant_baseline_009() { assert_eq!(render("a-dominant-baseline-009"), 0); }
+#[test] fn a_dominant_baseline_010() { assert_eq!(render("a-dominant-baseline-010"), 0); }
+#[test] fn a_dominant_baseline_011() { assert_eq!(render("a-dominant-baseline-011"), 0); }
+#[test] fn a_dominant_baseline_012() { assert_eq!(render("a-dominant-baseline-012"), 0); }
+#[test] fn a_dominant_baseline_013() { assert_eq!(render("a-dominant-baseline-013"), 0); }
+#[test] fn a_dominant_baseline_014() { assert_eq!(render("a-dominant-baseline-014"), 0); }
+#[test] fn a_dominant_baseline_015() { assert_eq!(render("a-dominant-baseline-015"), 0); }
+#[test] fn a_dominant_baseline_016() { assert_eq!(render("a-dominant-baseline-016"), 0); }
+#[test] fn a_dominant_baseline_017() { assert_eq!(render("a-dominant-baseline-017"), 0); }
+#[test] fn a_dominant_baseline_018() { assert_eq!(render("a-dominant-baseline-018"), 0); }
+#[test] fn a_dominant_baseline_019() { assert_eq!(render("a-dominant-baseline-019"), 0); }
+#[test] fn a_dominant_baseline_020() { assert_eq!(render("a-dominant-baseline-020"), 0); }
+#[test] fn a_dominant_baseline_021() { assert_eq!(render("a-dominant-baseline-021"), 0); }
 #[test]fn a_enable_background_001() { assert_eq!(render("a-enable-background-001"), 0); }
 #[test]fn a_enable_background_002() { assert_eq!(render("a-enable-background-002"), 0); }
 #[test]fn a_enable_background_003() { assert_eq!(render("a-enable-background-003"), 0); }
@@ -130,6 +150,7 @@ use crate::render;
 #[test]fn a_fill_opacity_004() { assert_eq!(render("a-fill-opacity-004"), 0); }
 #[test]fn a_fill_opacity_005() { assert_eq!(render("a-fill-opacity-005"), 0); }
 #[test]fn a_fill_opacity_006() { assert_eq!(render("a-fill-opacity-006"), 0); }
+#[test] fn a_fill_opacity_007() { assert_eq!(render("a-fill-opacity-007"), 0); }
 #[test]fn a_fill_rule_001() { assert_eq!(render("a-fill-rule-001"), 0); }
 #[test]fn a_fill_rule_002() { assert_eq!(render("a-fill-rule-002"), 0); }
 #[test]fn a_filter_001() { assert_eq!(render("a-filter-001"), 0); }
@@ -183,6 +204,7 @@ use crate::render;
 #[test]fn a_flood_color_006() { assert_eq!(render("a-flood-color-006"), 0); }
 #[test]fn a_flood_color_007() { assert_eq!(render("a-flood-color-007"), 0); }
 #[test]fn a_flood_opacity_001() { assert_eq!(render("a-flood-opacity-001"), 0); }
+#[test] fn a_flood_opacity_002() { assert_eq!(render("a-flood-opacity-002"), 0); }
 #[test]fn a_font_001() { assert_eq!(render("a-font-001"), 0); }
 #[test]fn a_font_family_001() { assert_eq!(render("a-font-family-001"), 0); }
 #[test]fn a_font_family_002() { assert_eq!(render("a-font-family-002"), 0); }
@@ -301,6 +323,7 @@ use crate::render;
 #[test]fn a_shape_rendering_008() { assert_eq!(render("a-shape-rendering-008"), 0); }
 #[test]fn a_stop_color_001() { assert_eq!(render("a-stop-color-001"), 0); }
 #[test]fn a_stop_opacity_001() { assert_eq!(render("a-stop-opacity-001"), 0); }
+#[test] fn a_stop_opacity_002() { assert_eq!(render("a-stop-opacity-002"), 0); }
 #[test]fn a_stroke_001() { assert_eq!(render("a-stroke-001"), 0); }
 #[test]fn a_stroke_002() { assert_eq!(render("a-stroke-002"), 0); }
 #[test]fn a_stroke_003() { assert_eq!(render("a-stroke-003"), 0); }
@@ -365,6 +388,7 @@ use crate::render;
 #[test]fn a_stroke_opacity_004() { assert_eq!(render("a-stroke-opacity-004"), 0); }
 #[test]fn a_stroke_opacity_005() { assert_eq!(render("a-stroke-opacity-005"), 0); }
 #[test]fn a_stroke_opacity_006() { assert_eq!(render("a-stroke-opacity-006"), 0); }
+#[test] fn a_stroke_opacity_007() { assert_eq!(render("a-stroke-opacity-007"), 0); }
 #[test]fn a_stroke_width_001() { assert_eq!(render("a-stroke-width-001"), 0); }
 #[test]fn a_stroke_width_002() { assert_eq!(render("a-stroke-width-002"), 0); }
 #[test]fn a_stroke_width_003() { assert_eq!(render("a-stroke-width-003"), 0); }
