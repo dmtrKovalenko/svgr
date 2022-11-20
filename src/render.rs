@@ -214,7 +214,7 @@ fn render_group_impl(
         };
 
         #[cfg(not(feature = "filter"))]
-        let (tx, ty, mut sub_pixmap) = (0, 0, sub_pixmap.pixmap.to_owned());
+        let (tx, ty, mut sub_pixmap) = (0, 0, sub_canvas.pixmap.to_owned());
 
         // During the background rendering for filters,
         // an opacity, a filter, a clip and a mask should be ignored for the inner group.
