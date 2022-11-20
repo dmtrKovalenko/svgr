@@ -129,6 +129,7 @@ mod units;
 mod use_node;
 pub mod utils;
 
+use std::hash::Hash;
 use std::rc::Rc;
 
 pub use strict_num::{ApproxEq, ApproxEqUlps, NonZeroPositiveF64, NormalizedF64, PositiveF64};
@@ -196,6 +197,12 @@ pub type Opacity = NormalizedF64;
 #[derive(Clone, Copy, Debug)]
 pub struct NonZeroF64(f64);
 
+impl std::hash::Hash for NonZeroF64 {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.to_bits().hash(state);
+    }
+}
+
 impl NonZeroF64 {
     /// Creates a new `NonZeroF64` value.
     #[inline]
@@ -216,7 +223,7 @@ impl NonZeroF64 {
 
 /// An element units.
 #[allow(missing_docs)]
-#[derive(Clone, Hash, Copy, PartialEq, Debug)]
+#[derive(Clone, Hash, Copy, PartialEq, Eq, Debug)]
 pub enum Units {
     UserSpaceOnUse,
     ObjectBoundingBox,
@@ -305,7 +312,7 @@ impl_from_str!(TextRendering);
 ///
 /// `image-rendering` attribute in the SVG.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Hash, Copy, PartialEq, Eq, Debug)]
 pub enum ImageRendering {
     OptimizeQuality,
     OptimizeSpeed,
@@ -331,7 +338,7 @@ pub enum NodeKind {
 
 impl NodeKind {
     /// Returns node's ID.
-    pub fn id(&self) -> &str { 
+    pub fn id(&self) -> &str {
         match self {
             NodeKind::Group(ref e) => e.id.as_str(),
             NodeKind::Path(ref e) => e.id.as_str(),
@@ -440,7 +447,7 @@ impl Default for Path {
 /// An `enable-background`.
 ///
 /// Contains only the `new [ <x> <y> <width> <height> ]` value.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Hash, Copy, Debug)]
 #[allow(missing_docs)]
 pub struct EnableBackground(pub Option<Rect>);
 
@@ -450,7 +457,7 @@ pub struct EnableBackground(pub Option<Rect>);
 /// Those that left is just an indicator that a new canvas should be created.
 ///
 /// `g` element in SVG.
-#[derive(Clone, Debug)]
+#[derive(Clone, Hash, Debug)]
 pub struct Group {
     /// Element's ID.
     ///
@@ -517,6 +524,32 @@ impl Default for Group {
 
 /// Alias for `rctree::Node<NodeKind>`.
 pub type Node = rctree::Node<NodeKind>;
+
+#[derive(Clone, Debug)]
+/// An implementation of hash for Regular Node
+pub struct HashedNode<'a>(pub &'a Node);
+
+impl Eq for HashedNode<'_> {}
+
+impl PartialEq for HashedNode<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl std::hash::Hash for HashedNode<'_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match &*self.0.borrow() {
+            NodeKind::Group(group) => group.hash(state),
+            NodeKind::Path(path) => path.hash(state),
+            NodeKind::Image(img) => img.hash(state), 
+        }
+
+        self.0
+            .children()
+            .for_each(|child| HashedNode(&child).hash(state));
+    }
+}
 
 // TODO: impl a Debug
 /// A nodes tree container.

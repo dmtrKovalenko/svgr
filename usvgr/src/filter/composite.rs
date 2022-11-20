@@ -8,7 +8,7 @@ use crate::svgtree::{self, AId};
 /// A composite filter primitive.
 ///
 /// `feComposite` element in the SVG.
-#[derive(Clone, Debug)]
+#[derive(Clone, Hash, Debug)]
 pub struct Composite {
     /// Identifies input for the given filter primitive.
     ///
@@ -36,6 +36,35 @@ pub enum CompositeOperator {
     Atop,
     Xor,
     Arithmetic { k1: f64, k2: f64, k3: f64, k4: f64 },
+}
+
+impl std::hash::Hash for CompositeOperator {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            CompositeOperator::Over => {
+                0u8.hash(state);
+            }
+            CompositeOperator::In => {
+                1u8.hash(state);
+            }
+            CompositeOperator::Out => {
+                2u8.hash(state);
+            }
+            CompositeOperator::Atop => {
+                3u8.hash(state);
+            }
+            CompositeOperator::Xor => {
+                4u8.hash(state);
+            }
+            CompositeOperator::Arithmetic { k1, k2, k3, k4 } => {
+                5u8.hash(state);
+                k1.to_bits().hash(state);
+                k2.to_bits().hash(state);
+                k3.to_bits().hash(state);
+                k4.to_bits().hash(state);
+            }
+        }
+    }
 }
 
 pub(crate) fn convert(fe: svgtree::Node, primitives: &[Primitive]) -> Kind {

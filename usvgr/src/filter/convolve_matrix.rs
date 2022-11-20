@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::hash::Hash;
+
 use super::{Input, Kind, Primitive};
 use crate::svgtree::{self, AId};
 use crate::{FuzzyZero, NonZeroF64};
@@ -40,6 +42,17 @@ pub struct ConvolveMatrix {
     pub preserve_alpha: bool,
 }
 
+impl Hash for ConvolveMatrix {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.input.hash(state);
+        self.matrix.hash(state);
+        self.divisor.hash(state);
+        self.bias.to_bits().hash(state);
+        self.edge_mode.hash(state);
+        self.preserve_alpha.hash(state);
+    }
+}
+
 /// A convolve matrix representation.
 ///
 /// Used primarily by [`ConvolveMatrix`].
@@ -50,6 +63,20 @@ pub struct ConvolveMatrixData {
     columns: u32,
     rows: u32,
     data: Vec<f64>,
+}
+
+impl Hash for ConvolveMatrixData {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.x.hash(state);
+        self.y.hash(state);
+        self.columns.hash(state);
+        self.rows.hash(state);
+        self.data
+            .iter()
+            .map(|f| f.to_bits())
+            .collect::<Vec<_>>()
+            .hash(state);
+    }
 }
 
 impl ConvolveMatrixData {
@@ -131,7 +158,7 @@ impl ConvolveMatrixData {
 
 /// An edges processing mode.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Hash, Copy, PartialEq, Eq, Debug)]
 pub enum EdgeMode {
     None,
     Duplicate,

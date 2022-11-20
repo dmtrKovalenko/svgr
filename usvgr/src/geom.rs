@@ -138,7 +138,7 @@ impl Line {
 
 // TODO: remove
 /// A 2D point representation.
-#[derive(Clone, Copy)]
+#[derive(Clone, Hash, Copy)]
 pub struct Point<T> {
     /// Position along the X-axis.
     pub x: T,

@@ -12,7 +12,7 @@ use crate::{
 };
 
 /// Use this struct to preload, decode and cache images for the upcoming rendering.
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub struct PreloadedImageData {
     /// The decoded image data. Make sure that if you submit the data directly it must be blended for semi transparent colors.
     pub data: Vec<u8>,
@@ -55,7 +55,7 @@ impl PreloadedImageData {
 /// A raster image element.
 ///
 /// `image` element in SVG.
-#[derive(Clone, Debug)]
+#[derive(Clone, Hash, Debug)]
 pub struct Image {
     /// Element's ID.
     ///

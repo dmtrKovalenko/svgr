@@ -17,6 +17,13 @@ fn main() {
 
     let pixmap_size = rtree.size.to_screen_size();
     let mut pixmap = tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).unwrap();
-    svgr::render(&rtree, usvgr::FitTo::Original, tiny_skia::Transform::default(), pixmap.as_mut()).unwrap();
+    svgr::render(
+        &rtree,
+        usvgr::FitTo::Original,
+        tiny_skia::Transform::default(),
+        pixmap.as_mut(),
+        &mut svgr::SvgrCache::none(),
+    )
+    .unwrap();
     pixmap.save_png(&args[2]).unwrap();
 }

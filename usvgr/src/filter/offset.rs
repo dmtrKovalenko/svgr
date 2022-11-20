@@ -10,7 +10,7 @@ use crate::svgtree::{self, AId};
 /// An offset filter primitive.
 ///
 /// `feOffset` element in the SVG.
-#[derive(Clone, Debug)]
+#[derive(Clone, Hash, Debug)]
 pub struct Offset {
     /// Identifies input for the given filter primitive.
     ///

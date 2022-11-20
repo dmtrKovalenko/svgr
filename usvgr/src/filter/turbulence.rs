@@ -11,7 +11,7 @@ use crate::Point;
 /// A turbulence generation filter primitive.
 ///
 /// `feTurbulence` element in the SVG.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Hash, Copy, Debug)]
 pub struct Turbulence {
     /// Identifies the base frequency for the noise function.
     ///
@@ -41,7 +41,7 @@ pub struct Turbulence {
 
 /// A turbulence kind for the `feTurbulence` filter.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum TurbulenceKind {
     FractalNoise,
     Turbulence,

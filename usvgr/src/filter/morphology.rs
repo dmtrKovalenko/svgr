@@ -11,7 +11,7 @@ use crate::FuzzyZero;
 /// A morphology filter primitive.
 ///
 /// `feMorphology` element in the SVG.
-#[derive(Clone, Debug)]
+#[derive(Clone, Hash, Debug)]
 pub struct Morphology {
     /// Identifies input for the given filter primitive.
     ///
@@ -40,7 +40,7 @@ pub struct Morphology {
 
 /// A morphology operation.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Hash, Eq, Copy, PartialEq, Debug)]
 pub enum MorphologyOperator {
     Erode,
     Dilate,

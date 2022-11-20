@@ -48,6 +48,18 @@ pub struct DropShadow {
     pub opacity: Opacity,
 }
 
+impl std::hash::Hash for DropShadow {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.input.hash(state);
+        self.dx.to_bits().hash(state);
+        self.dy.to_bits().hash(state);
+        self.std_dev_x.hash(state);
+        self.std_dev_y.hash(state);
+        self.color.hash(state);
+        self.opacity.hash(state);
+    }
+}
+
 pub(crate) fn convert(
     fe: svgtree::Node,
     primitives: &[Primitive],

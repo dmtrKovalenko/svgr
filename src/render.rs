@@ -203,7 +203,7 @@ fn render_group_impl(
     let mut bbox: Option<usvgr::PathBbox> = None;
     let curr_ts = canvas.transform;
 
-    SvgrCache::with_subpixmap_cache(cache, canvas, |sub_canvas, cache| {
+    SvgrCache::with_subpixmap_cache(cache, node, canvas, |sub_canvas, cache| {
         bbox = render_group(tree, node, state, sub_canvas, cache);
 
         // At this point, `sub_pixmap` has probably the same size as the viewbox.

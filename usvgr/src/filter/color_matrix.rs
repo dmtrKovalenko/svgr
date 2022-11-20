@@ -10,7 +10,7 @@ use crate::svgtree::{self, AId};
 /// A color matrix filter primitive.
 ///
 /// `feColorMatrix` element in the SVG.
-#[derive(Clone, Debug)]
+#[derive(Clone, Hash, Debug)]
 pub struct ColorMatrix {
     /// Identifies input for the given filter primitive.
     ///
@@ -31,6 +31,27 @@ pub enum ColorMatrixKind {
     Saturate(PositiveF64),
     HueRotate(f64),
     LuminanceToAlpha,
+}
+
+impl std::hash::Hash for ColorMatrixKind { 
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            ColorMatrixKind::Matrix(m) => {
+                for v in m {
+                    v.to_bits().hash(state);
+                }
+            }
+            ColorMatrixKind::Saturate(v) => {
+                v.get().to_bits().hash(state);
+            }
+            ColorMatrixKind::HueRotate(v) => {
+                v.to_bits().hash(state);
+            }
+            ColorMatrixKind::LuminanceToAlpha => {
+                0u8.hash(state);
+            }
+        }
+    }
 }
 
 impl Default for ColorMatrixKind {

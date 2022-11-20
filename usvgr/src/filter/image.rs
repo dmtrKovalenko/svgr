@@ -6,12 +6,12 @@ use std::sync::Arc;
 
 use super::Kind;
 use crate::svgtree::{self, AId};
-use crate::{converter, AspectRatio, Group, ImageRendering, Node, NodeKind, image};
+use crate::{converter, AspectRatio, Group, ImageRendering, Node, NodeKind, image, HashedNode};
 
 /// An image filter primitive.
 ///
 /// `feImage` element in the SVG.
-#[derive(Clone, Debug)]
+#[derive(Clone, Hash, Debug)]
 pub struct Image {
     /// Value of the `preserveAspectRatio` attribute.
     pub aspect: AspectRatio,
@@ -36,6 +36,20 @@ pub enum ImageKind {
     /// Isn't inside a dummy group like clip, mask and pattern because
     /// `feImage` can reference only a single element.
     Use(Node),
+}
+
+
+impl std::hash::Hash for ImageKind { 
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            ImageKind::Image(data) => {
+                data.hash(state);
+            }
+            ImageKind::Use(node) => {
+                HashedNode(node).hash(state);
+            }
+        }
+    }
 }
 
 pub(crate) fn convert(

@@ -51,7 +51,7 @@ pub use self::turbulence::*;
 /// A filter element.
 ///
 /// `filter` element in the SVG.
-#[derive(Clone, Debug)]
+#[derive(Clone, Hash, Debug)]
 pub struct Filter {
     /// Element's ID.
     ///
@@ -107,9 +107,21 @@ pub struct Primitive {
     pub kind: Kind,
 }
 
+impl std::hash::Hash for Primitive { 
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.x.map(f64::to_bits).hash(state);
+        self.y.map(f64::to_bits).hash(state);
+        self.width.map(f64::to_bits).hash(state);
+        self.height.map(f64::to_bits).hash(state);
+        self.color_interpolation.hash(state);
+        self.result.hash(state);
+        self.kind.hash(state);
+    }
+}
+
 /// A filter kind.
 #[allow(missing_docs)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Hash, Debug)]
 pub enum Kind {
     Blend(Blend),
     ColorMatrix(ColorMatrix),
@@ -157,7 +169,7 @@ impl Kind {
 
 /// Identifies input for a filter primitive.
 #[allow(missing_docs)]
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Hash, PartialEq, Debug)]
 pub enum Input {
     SourceGraphic,
     SourceAlpha,
@@ -170,7 +182,7 @@ pub enum Input {
 
 /// A color interpolation mode.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Hash, Copy, PartialEq, Debug)]
 pub enum ColorInterpolation {
     SRGB,
     LinearRGB,

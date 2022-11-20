@@ -46,6 +46,16 @@ pub struct Mask {
     pub root: Node,
 }
 
+impl std::hash::Hash for Mask {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.units.hash(state);
+        self.content_units.hash(state);
+        self.rect.hash(state);
+        self.mask.hash(state);
+    }
+}
+
 pub(crate) fn convert(
     node: svgtree::Node,
     state: &converter::State,

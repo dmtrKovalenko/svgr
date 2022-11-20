@@ -8,7 +8,7 @@ use crate::svgtree::{self, AId};
 /// A tile filter primitive.
 ///
 /// `feTile` element in the SVG.
-#[derive(Clone, Debug)]
+#[derive(Clone, Hash, Debug)]
 pub struct Tile {
     /// Identifies input for the given filter primitive.
     ///

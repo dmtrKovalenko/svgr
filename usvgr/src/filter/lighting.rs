@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::hash;
+
 use strict_num::PositiveF64;
 
 use super::{Input, Kind, Primitive};
@@ -37,6 +39,16 @@ pub struct DiffuseLighting {
     pub light_source: LightSource,
 }
 
+impl std::hash::Hash for DiffuseLighting {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.input.hash(state);
+        self.surface_scale.to_bits().hash(state);
+        self.diffuse_constant.to_bits().hash(state);
+        self.lighting_color.hash(state);
+        self.light_source.hash(state);
+    }
+}
+
 pub(crate) fn convert_diffuse(fe: svgtree::Node, primitives: &[Primitive]) -> Option<Kind> {
     let light_source = convert_light_source(fe)?;
     Some(Kind::DiffuseLighting(DiffuseLighting {
@@ -51,7 +63,7 @@ pub(crate) fn convert_diffuse(fe: svgtree::Node, primitives: &[Primitive]) -> Op
 /// A specular lighting filter primitive.
 ///
 /// `feSpecularLighting` element in the SVG.
-#[derive(Clone, Debug)]
+#[derive(Clone, Hash, Debug)]
 pub struct SpecularLighting {
     /// Identifies input for the given filter primitive.
     ///
@@ -122,7 +134,7 @@ fn convert_lighting_color(node: svgtree::Node) -> Color {
 
 /// A light source kind.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Hash, Copy, Debug)]
 pub enum LightSource {
     DistantLight(DistantLight),
     PointLight(PointLight),
@@ -178,6 +190,13 @@ pub struct DistantLight {
     pub elevation: f64,
 }
 
+impl hash::Hash for DistantLight {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.azimuth.to_bits().hash(state);
+        self.elevation.to_bits().hash(state);
+    }
+}
+
 /// A point light source.
 ///
 /// `fePointLight` element in the SVG.
@@ -197,6 +216,14 @@ pub struct PointLight {
     ///
     /// `z` in the SVG.
     pub z: f64,
+}
+
+impl hash::Hash for PointLight {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.x.to_bits().hash(state);
+        self.y.to_bits().hash(state);
+        self.z.to_bits().hash(state);
+    }
 }
 
 /// A spot light source.
@@ -243,6 +270,19 @@ pub struct SpotLight {
     ///
     /// `limitingConeAngle` in the SVG.
     pub limiting_cone_angle: Option<f64>,
+}
+
+impl hash::Hash for SpotLight {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.x.to_bits().hash(state);
+        self.y.to_bits().hash(state);
+        self.z.to_bits().hash(state);
+        self.points_at_x.to_bits().hash(state);
+        self.points_at_y.to_bits().hash(state);
+        self.points_at_z.to_bits().hash(state);
+        self.specular_exponent.hash(state);
+        self.limiting_cone_angle.map(|v| v.to_bits().hash(state));
+    }
 }
 
 #[inline(never)]
