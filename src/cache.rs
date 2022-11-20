@@ -17,6 +17,7 @@ pub struct SvgrCache(Option<LruCache<u64, FromPixmap>>);
 
 pub struct FromPixmap {
     pub pixmap: tiny_skia::Pixmap,
+    pub blend_mode: tiny_skia::BlendMode,
     pub tx: i32,
     pub ty: i32,
     pub opacity: f32,
@@ -30,7 +31,7 @@ impl FromPixmap {
             self.pixmap.as_ref(),
             &PixmapPaint {
                 opacity: self.opacity,
-                blend_mode: tiny_skia::BlendMode::SourceOver,
+                blend_mode: self.blend_mode,
                 quality: tiny_skia::FilterQuality::Nearest,
             },
             tiny_skia::Transform::default(),
@@ -125,6 +126,7 @@ impl SvgrCache {
                     tx,
                     ty,
                     opacity: 1.0,
+                    blend_mode: tiny_skia::BlendMode::SourceOver,
                 }
             } else {
                 FromPixmap {
@@ -132,6 +134,7 @@ impl SvgrCache {
                     tx: 0,
                     ty: 0,
                     opacity: 1.0,
+                    blend_mode: tiny_skia::BlendMode::SourceOver
                 }
             };
 

@@ -58,6 +58,72 @@ impl_enum_from_str!(TextAnchor,
     "end"       => TextAnchor::End
 );
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum AlignmentBaseline {
+    Auto,
+    Baseline,
+    BeforeEdge,
+    TextBeforeEdge,
+    Middle,
+    Central,
+    AfterEdge,
+    TextAfterEdge,
+    Ideographic,
+    Alphabetic,
+    Hanging,
+    Mathematical,
+}
+
+impl_enum_default!(AlignmentBaseline, Auto);
+
+impl_enum_from_str!(AlignmentBaseline,
+    "auto" => AlignmentBaseline::Auto,
+    "baseline" => AlignmentBaseline::Baseline,
+    "before-edge" => AlignmentBaseline::BeforeEdge,
+    "text-before-edge" => AlignmentBaseline::TextBeforeEdge,
+    "middle" => AlignmentBaseline::Middle,
+    "central" => AlignmentBaseline::Central,
+    "after-edge" => AlignmentBaseline::AfterEdge,
+    "text-after-edge" => AlignmentBaseline::TextAfterEdge,
+    "ideographic" => AlignmentBaseline::Ideographic,
+    "alphabetic" => AlignmentBaseline::Alphabetic,
+    "hanging" => AlignmentBaseline::Hanging,
+    "mathematical" => AlignmentBaseline::Mathematical
+);
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum DominantBaseline {
+    Auto,
+    UseScript,
+    NoChange,
+    ResetSize,
+    Ideographic,
+    Alphabetic,
+    Hanging,
+    Mathematical,
+    Central,
+    Middle,
+    TextAfterEdge,
+    TextBeforeEdge,
+}
+
+impl_enum_default!(DominantBaseline, Auto);
+
+impl_enum_from_str!(DominantBaseline,
+    "auto" => DominantBaseline::Auto,
+    "use-script" => DominantBaseline::UseScript,
+    "no-change" => DominantBaseline::NoChange,
+    "reset-size" => DominantBaseline::ResetSize,
+    "ideographic" => DominantBaseline::Ideographic,
+    "alphabetic" => DominantBaseline::Alphabetic,
+    "hanging" => DominantBaseline::Hanging,
+    "mathematical" => DominantBaseline::Mathematical,
+    "central" => DominantBaseline::Central,
+    "middle" => DominantBaseline::Middle,
+    "text-after-edge" => DominantBaseline::TextAfterEdge,
+    "text-before-edge" => DominantBaseline::TextBeforeEdge
+);
+
 impl crate::svgtree::EnumFromStr for fontdb::Style {
     fn enum_from_str(s: &str) -> Option<Self> {
         match s {
@@ -119,7 +185,10 @@ pub struct TextSpan {
     pub font: super::fontdb_ext::Font,
     pub font_size: NonZeroPositiveF64,
     pub small_caps: bool,
+    pub apply_kerning: bool,
     pub decoration: TextDecoration,
+    pub dominant_baseline: DominantBaseline,
+    pub alignment_baseline: AlignmentBaseline,
     pub baseline_shift: f64,
     pub visibility: Visibility,
     pub letter_spacing: f64,
@@ -129,6 +198,35 @@ pub struct TextSpan {
 impl TextSpan {
     pub fn contains(&self, byte_offset: ByteIndex) -> bool {
         byte_offset.value() >= self.start && byte_offset.value() < self.end
+    }
+
+    // Baseline resolving in SVG is a mess.
+    // Not only it's poorly documented, but as soon as you start mixing
+    // `dominant-baseline` and `alignment-baseline` each application/browser will produce
+    // different results.
+    //
+    // For now, resvg simply tries to match Chrome's output and not the mythical SVG spec output.
+    //
+    // See `alignment_baseline_shift` method comment for more details.
+    pub fn resolve_baseline(&self, writing_mode: WritingMode) -> f64 {
+        let mut shift = -self.baseline_shift;
+
+        // TODO: support vertical layout as well
+        if writing_mode == WritingMode::LeftToRight {
+            if self.alignment_baseline == AlignmentBaseline::Auto
+                || self.alignment_baseline == AlignmentBaseline::Baseline
+            {
+                shift += self
+                    .font
+                    .dominant_baseline_shift(self.dominant_baseline, self.font_size.get());
+            } else {
+                shift += self
+                    .font
+                    .alignment_baseline_shift(self.alignment_baseline, self.font_size.get());
+            }
+        }
+
+        return shift;
     }
 }
 
@@ -249,6 +347,26 @@ fn collect_text_chunks_impl(
             .unwrap_or_default();
         let paint_order = crate::converter::svg_paint_order_to_usvg(raw_paint_order);
 
+        let mut dominant_baseline = parent
+            .find_attribute(AId::DominantBaseline)
+            .unwrap_or_default();
+
+        // `no-change` means "use parent".
+        if dominant_baseline == DominantBaseline::NoChange {
+            dominant_baseline = parent
+                .parent_element()
+                .unwrap()
+                .find_attribute(AId::DominantBaseline)
+                .unwrap_or_default();
+        }
+
+        let mut apply_kerning = true;
+        if parent.resolve_length(AId::Kerning, state, -1.0) == 0.0 {
+            apply_kerning = false;
+        } else if parent.find_attribute::<&str>(AId::FontKerning) == Some("none") {
+            apply_kerning = false;
+        }
+
         let span = TextSpan {
             start: 0,
             end: 0,
@@ -258,8 +376,13 @@ fn collect_text_chunks_impl(
             font,
             font_size,
             small_caps: parent.find_attribute(AId::FontVariant) == Some("small-caps"),
+            apply_kerning,
             decoration: resolve_decoration(text_node, parent, state, cache),
             visibility: parent.find_attribute(AId::Visibility).unwrap_or_default(),
+            dominant_baseline,
+            alignment_baseline: parent
+                .find_attribute(AId::AlignmentBaseline)
+                .unwrap_or_default(),
             baseline_shift: resolve_baseline_shift(parent, state),
             letter_spacing: parent.resolve_length(AId::LetterSpacing, state, 0.0),
             word_spacing: parent.resolve_length(AId::WordSpacing, state, 0.0),
