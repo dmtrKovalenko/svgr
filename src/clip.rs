@@ -38,6 +38,7 @@ pub fn clip(
                 crate::path::draw(
                     tree,
                     path_node,
+                    &node,
                     tiny_skia::BlendMode::Clear,
                     &mut clip_canvas,
                     cache,
@@ -119,6 +120,7 @@ fn draw_group_child(
             crate::path::draw(
                 tree,
                 path_node,
+                node,
                 tiny_skia::BlendMode::SourceOver,
                 canvas,
                 cache,

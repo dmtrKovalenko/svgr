@@ -2,17 +2,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use lru::LruCache;
-use std::{borrow::Borrow, convert::TryInto, hash::Hash, num::NonZeroUsize, rc::Rc};
-use tiny_skia::{Pixmap, PixmapMut, PixmapPaint};
-use usvgr::{filter::Blend, FuzzyEq, NodeExt, NodeKind, Transform};
+use std::convert::TryInto;
+use usvgr::{FuzzyEq, NodeExt};
 
 use crate::{
     cache::{FromPixmap, SvgrCache},
     ConvTransform,
 };
-
-type Cache = LruCache<Rc<NodeKind>, Pixmap>;
 
 pub struct Canvas<'a> {
     pub(crate) skip_caching: bool,
@@ -59,17 +55,6 @@ impl Canvas<'_> {
             self.clip = Some(clip);
         }
     }
-
-    pub fn merge_canvas(&mut self, other: &Canvas) {
-        let self_data = self.pixmap.pixels_mut();
-        let other_data = other.pixmap.as_ref().pixels();
-
-        for (i, pixel) in other_data.iter().enumerate() {
-            if pixel.get() > 0 {
-                self_data[i] = *pixel
-            }
-        }
-    }
 }
 
 /// Indicates the current rendering state.
@@ -88,7 +73,7 @@ pub(crate) fn render_to_canvas(
     tree: &usvgr::Tree,
     img_size: usvgr::ScreenSize,
     canvas: &mut Canvas,
-    cache: &mut SvgrCache
+    cache: &mut SvgrCache,
 ) {
     render_node_to_canvas(
         tree,
@@ -97,7 +82,7 @@ pub(crate) fn render_to_canvas(
         img_size,
         &mut RenderState::Ok,
         canvas,
-        cache
+        cache,
     );
 }
 
@@ -140,9 +125,14 @@ pub(crate) fn render_node(
     cache: &mut SvgrCache,
 ) -> Option<usvgr::PathBbox> {
     match *node.borrow() {
-        usvgr::NodeKind::Path(ref path) => {
-            crate::path::draw(tree, path, tiny_skia::BlendMode::SourceOver, canvas, cache)
-        }
+        usvgr::NodeKind::Path(ref path) => crate::path::draw(
+            tree,
+            path,
+            node,
+            tiny_skia::BlendMode::SourceOver,
+            canvas,
+            cache,
+        ),
         usvgr::NodeKind::Image(ref img) => Some(crate::image::draw(img, canvas)),
         usvgr::NodeKind::Group(ref g) => render_group_impl(tree, node, g, state, canvas, cache),
     }
@@ -249,7 +239,8 @@ fn render_group_impl(
             let bbox = bbox.and_then(|r| r.to_rect());
             let ts = usvgr::Transform::from_native(curr_ts);
             let background = prepare_filter_background(tree, node, filter, &sub_pixmap, cache);
-            let fill_paint = prepare_filter_fill_paint(tree, node, filter, bbox, ts, &sub_pixmap, cache);
+            let fill_paint =
+                prepare_filter_fill_paint(tree, node, filter, bbox, ts, &sub_pixmap, cache);
             let stroke_paint =
                 prepare_filter_stroke_paint(tree, node, filter, bbox, ts, &sub_pixmap, cache);
             crate::filter::apply(
@@ -261,7 +252,7 @@ fn render_group_impl(
                 fill_paint.as_ref(),
                 stroke_paint.as_ref(),
                 &mut sub_pixmap,
-                cache
+                cache,
             )
         }
 
@@ -436,7 +427,7 @@ fn prepare_filter_background(
         img_size,
         &mut state,
         &mut canvas,
-        cache
+        cache,
     );
 
     Some(pixmap)
@@ -457,7 +448,7 @@ fn prepare_filter_fill_paint(
     bbox: Option<usvgr::Rect>,
     ts: usvgr::Transform,
     pixmap: &tiny_skia::Pixmap,
-    cache: &mut SvgrCache
+    cache: &mut SvgrCache,
 ) -> Option<tiny_skia::Pixmap> {
     let region = crate::filter::calc_region(filter, bbox, &ts, pixmap).ok()?;
     let mut sub_pixmap = tiny_skia::Pixmap::new(region.width(), region.height()).unwrap();
@@ -483,7 +474,7 @@ fn prepare_filter_fill_paint(
                 true,
                 tiny_skia::BlendMode::SourceOver,
                 &mut sub_canvas,
-                cache
+                cache,
             );
         }
     }
@@ -526,7 +517,7 @@ fn prepare_filter_stroke_paint(
                 true,
                 tiny_skia::BlendMode::SourceOver,
                 &mut sub_canvas,
-                cache
+                cache,
             );
         }
     }

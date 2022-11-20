@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use once_cell::sync::Lazy;
 use rgb::FromSlice;
+use svgr::SvgrCache;
 use usvgr::PreloadedImageData;
 
 #[rustfmt::skip]
@@ -63,6 +64,7 @@ pub fn render(name: &str) -> usize {
         fit_to,
         tiny_skia::Transform::default(),
         pixmap.as_mut(),
+        &mut SvgrCache::none(),
     )
     .unwrap();
 

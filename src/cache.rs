@@ -3,9 +3,10 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use crate::render::Canvas;
+use crate::{render::Canvas, trim_transparency};
 use lru::LruCache;
 use tiny_skia::PixmapPaint;
+use usvgr::HashedNode;
 
 /// Defines rendering LRU cache. Each individual node and group will be cached separately.
 /// Make sure that in most cases it will require saving of the whole canvas which may lead to significant memory usage.
@@ -49,6 +50,12 @@ impl SvgrCache {
         Self(Some(LruCache::new(capacity)))
     }
 
+    fn hash(&self, node: &usvgr::Node) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        HashedNode(node).hash(&mut hasher);
+        hasher.finish()
+    }
+
     /// Creates sub pixmap that will be cached itself withing a canvas cache. Guarantees empty canvas within closure.  
     pub(crate) fn with_subpixmap_cache(
         &mut self,
@@ -56,11 +63,7 @@ impl SvgrCache {
         canvas: &mut Canvas,
         mut f: impl FnMut(&mut Canvas, &mut SvgrCache) -> FromPixmap,
     ) {
-        let node = usvgr::HashedNode(node);
-        let mut hasher = DefaultHasher::new();
-        node.hash(&mut hasher);
-        let hash = hasher.finish();
-
+        let hash = self.hash(node);
         let cached_value = self.0.as_mut().and_then(|cache| cache.get(&hash));
 
         if let Some(cached_value) = cached_value {
@@ -89,53 +92,54 @@ impl SvgrCache {
     pub(crate) fn with_cache(
         &mut self,
         canvas: &mut Canvas,
-        node: &usvgr::Path,
-        f: impl FnOnce(&mut Canvas, &mut SvgrCache),
+        node: &usvgr::Node,
+        mut f: impl FnMut(&mut Canvas, &mut SvgrCache),
     ) {
-        f(canvas, self);
-        // if self.0.is_none() || canvas.skip_caching {
-        // } else if let Some(cache) = self.0.as_mut() {
-        //     let value = cache.get(node);
-        //     let need_cache = value.is_none();
+        if canvas.skip_caching {
+            f(canvas, self);
+            return;
+        }
 
-        //     let pixmap = if let Some(pixmap) = value {
-        //         pixmap.to_owned()
-        //     } else {
-        //         // safe to unwrap – cloning a pixmap can't fail for dimensions validation.
-        //         let mut pixmap =
-        //             tiny_skia::Pixmap::new(canvas.pixmap.width(), canvas.pixmap.height()).unwrap();
-        //         let pixmap_mut = pixmap.as_mut();
+        let hash = self.hash(node);
+        let cached_value = self.0.as_mut().and_then(|cache| cache.get(&hash));
 
-        //         let mut temp_canvas = Canvas {
-        //             pixmap: pixmap_mut,
-        //             transform: canvas.transform,
-        //             skip_caching: true,
-        //             clip: canvas.clip.clone(),
-        //         };
+        if let Some(cached_value) = cached_value {
+            cached_value.draw_into(canvas)
+        } else {
+            let mut pixmap =
+                tiny_skia::Pixmap::new(canvas.pixmap.width(), canvas.pixmap.height()).unwrap();
+            let pixmap_mut = pixmap.as_mut();
 
-        //         f(&mut temp_canvas, self);
+            let mut temp_canvas = Canvas {
+                pixmap: pixmap_mut,
+                transform: canvas.transform,
+                skip_caching: true,
+                clip: canvas.clip.clone(),
+            };
 
-        //         pixmap
-        //     };
+            f(&mut temp_canvas, self);
 
-        //     canvas.pixmap.draw_pixmap(
-        //         0,
-        //         0,
-        //         pixmap.as_ref(),
-        //         &PixmapPaint {
-        //             opacity: 1.0,
-        //             blend_mode: tiny_skia::BlendMode::SourceOver,
-        //             quality: tiny_skia::FilterQuality::Nearest,
-        //         },
-        //         tiny_skia::Transform::default(),
-        //         None,
-        //     );
+            let value = if let Some((tx, ty, pixmap)) = trim_transparency(&mut pixmap.as_mut()) {
+                FromPixmap {
+                    pixmap,
+                    tx,
+                    ty,
+                    opacity: 1.0,
+                }
+            } else {
+                FromPixmap {
+                    pixmap,
+                    tx: 0,
+                    ty: 0,
+                    opacity: 1.0,
+                }
+            };
 
-        //     if need_cache {
-        //         self.0.as_mut().map(|cache| {
-        //             cache.put(node.to_owned(), pixmap)
-        //         });
-        //     }
-        // }
+            value.draw_into(canvas);
+
+            if let Some(cache) = self.0.as_mut() {
+                cache.put(hash, value);
+            }
+        };
     }
 }

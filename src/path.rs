@@ -7,6 +7,7 @@ use crate::{cache::SvgrCache, render::Canvas};
 pub fn draw(
     tree: &usvgr::Tree,
     path: &usvgr::Path,
+    parent: &usvgr::Node,
     blend_mode: tiny_skia::BlendMode,
     canvas: &mut Canvas,
     cache: &mut SvgrCache,
@@ -18,7 +19,7 @@ pub fn draw(
 
     let skia_path = convert_path(&path.data)?;
 
-    cache.with_cache(canvas, path, |canvas, cache| {
+    cache.with_cache(canvas, parent, |canvas, cache| {
         // `usvgr` guaranties that path without a bbox will not use
         // a paint server with ObjectBoundingBox,
         // so we can pass whatever rect we want, because it will not be used anyway.
