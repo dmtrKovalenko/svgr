@@ -14,6 +14,8 @@
 
 pub use tiny_skia;
 pub use usvgr;
+#[cfg(feature = "text")]
+pub use usvgr_text_layout;
 
 use usvgr::NodeExt;
 

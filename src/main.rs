@@ -5,29 +5,30 @@
 use std::path;
 
 use usvgr::NodeExt;
-
-macro_rules! timed {
-    ($args:expr, $name:expr, $task:expr) => {
-        if $args.perf {
-            let now = std::time::Instant::now();
-            let res = $task;
-            println!(
-                "{}: {:.2}ms",
-                $name,
-                now.elapsed().as_micros() as f64 / 1000.0
-            );
-            res
-        } else {
-            $task
-        }
-    };
-}
+use usvgr_text_layout::{fontdb, TreeTextToPath};
 
 fn main() {
     if let Err(e) = process() {
         eprintln!("Error: {}.", e);
         std::process::exit(1);
     }
+}
+
+fn timed<F, T>(perf: bool, name: &str, mut f: F) -> T
+where
+    F: FnMut() -> T,
+{
+    let now = std::time::Instant::now();
+    let result = f();
+    if perf {
+        println!(
+            "{}: {:.2}ms",
+            name,
+            now.elapsed().as_micros() as f64 / 1000.0
+        );
+    }
+
+    result
 }
 
 fn process() -> Result<(), String> {
@@ -48,9 +49,9 @@ fn process() -> Result<(), String> {
         }
     }
 
-    let svg_data = timed!(args, "Reading", {
+    let mut svg_data = timed(args.perf, "Reading", || -> Result<Vec<u8>, &str> {
         if let InputFrom::File(ref file) = args.in_svg {
-            std::fs::read(file).map_err(|_| "failed to open the provided file")?
+            std::fs::read(file).map_err(|_| "failed to open the provided file")
         } else {
             use std::io::Read;
             let mut buf = Vec::new();
@@ -59,40 +60,48 @@ fn process() -> Result<(), String> {
             handle
                 .read_to_end(&mut buf)
                 .map_err(|_| "failed to read stdin")?;
-            buf
+            Ok(buf)
         }
-    });
+    })?;
 
-    let tree = timed!(
-        args,
-        "Parsing",
-        usvgr::Tree::from_data(&svg_data, &args.usvgr.to_ref()).map_err(|e| e.to_string())
-    )?;
+    if svg_data.starts_with(&[0x1f, 0x8b]) {
+        svg_data = timed(args.perf, "SVGZ Decoding", || {
+            usvgr::decompress_svgz(&svg_data).map_err(|e| e.to_string())
+        })?;
+    };
+
+    let svg_string = std::str::from_utf8(&svg_data)
+        .map_err(|_| "provided data has not an UTF-8 encoding".to_string())?;
+
+    let xml_tree = timed(args.perf, "XML Parsing", || {
+        usvgr::roxmltree::Document::parse(&svg_string).map_err(|e| e.to_string())
+    })?;
+
+    let mut tree = timed(args.perf, "SVG Parsing", || {
+        usvgr::Tree::from_xmltree(&xml_tree, &args.usvg).map_err(|e| e.to_string())
+    })?;
+
+    timed(args.perf, "Text Conversion", || {
+        tree.convert_text(&args.fontdb, args.usvg.keep_named_groups)
+    });
 
     if args.query_all {
         return query_all(&tree);
     }
 
-    // Dump before rendering in case of panic.
-    if let Some(ref dump_path) = args.dump {
-        dump_svg(&tree, dump_path)?;
-    }
-
     // Render.
     let img = render_svg(&args, &tree)?;
 
-    match args.out_png {
+    match args.out_png.unwrap() {
         OutputTo::Stdout => {
             use std::io::Write;
             let buf = img.encode_png().map_err(|e| e.to_string())?;
             std::io::stdout().write_all(&buf).unwrap();
         }
         OutputTo::File(ref file) => {
-            timed!(
-                args,
-                "Saving",
-                img.save_png(file).map_err(|e| e.to_string())?
-            );
+            timed(args.perf, "Saving", || {
+                img.save_png(file).map_err(|e| e.to_string())
+            })?;
         }
     };
 
@@ -187,7 +196,6 @@ OPTIONS:
 
   --perf                        Prints performance stats
   --quiet                       Disables warnings
-  --dump-svg PATH               Saves the preprocessed SVG into the selected file
 
 ARGS:
   <in-svg>                      Input file
@@ -228,10 +236,9 @@ struct CliArgs {
 
     perf: bool,
     quiet: bool,
-    dump_svg: Option<String>,
 
     input: String,
-    output: String,
+    output: Option<String>,
 }
 
 fn collect_args() -> Result<CliArgs, pico_args::Error> {
@@ -292,10 +299,9 @@ fn collect_args() -> Result<CliArgs, pico_args::Error> {
 
         perf: input.contains("--perf"),
         quiet: input.contains("--quiet"),
-        dump_svg: input.opt_value_from_str("--dump-svg")?,
 
         input: input.free_from_str()?,
-        output: input.free_from_str()?,
+        output: input.opt_free_from_str()?,
     })
 }
 
@@ -364,27 +370,26 @@ enum OutputTo {
     File(path::PathBuf),
 }
 
-struct Args {
+struct Args<'a> {
     in_svg: InputFrom,
-    out_png: OutputTo,
+    out_png: Option<OutputTo>,
     query_all: bool,
     export_id: Option<String>,
     export_area_page: bool,
     export_area_drawing: bool,
-    dump: Option<path::PathBuf>,
     perf: bool,
     quiet: bool,
-    usvgr: usvgr::Options,
+    usvg: usvgr::Options<'a>,
+    fontdb: fontdb::Database,
     fit_to: usvgr::FitTo,
     background: Option<svgrtypes::Color>,
 }
 
-fn parse_args() -> Result<Args, String> {
+fn parse_args<'a>() -> Result<Args<'a>, String> {
     let mut args = collect_args().map_err(|e| e.to_string())?;
 
     let (in_svg, out_png) = {
         let in_svg = args.input.as_str();
-        let out_png = args.output.as_str();
 
         let svg_from = if in_svg == "-" {
             InputFrom::Stdin
@@ -394,19 +399,23 @@ fn parse_args() -> Result<Args, String> {
             InputFrom::File(in_svg.into())
         };
 
-        let svg_to = if out_png == "-c" {
-            OutputTo::Stdout
+        let out_png = if let Some(ref out_png) = args.output {
+            if out_png == "-c" {
+                Some(OutputTo::Stdout)
+            } else {
+                Some(OutputTo::File(out_png.into()))
+            }
         } else {
-            OutputTo::File(out_png.into())
+            None
         };
 
-        (svg_from, svg_to)
+        (svg_from, out_png)
     };
 
-    let fontdb = timed!(args, "FontDB init", load_fonts(&mut args));
+    let fontdb = timed(args.perf, "FontDB", || load_fonts(&mut args));
     if args.list_fonts {
         for face in fontdb.faces() {
-            if let usvgr::fontdb::Source::File(ref path) = &face.source {
+            if let fontdb::Source::File(ref path) = &face.source {
                 println!(
                     "{}: '{}', {}, {:?}, {:?}, {:?}",
                     path.display(),
@@ -420,7 +429,7 @@ fn parse_args() -> Result<Args, String> {
         }
     }
 
-    if !args.query_all && args.output.is_empty() {
+    if !args.query_all && out_png.is_none() {
         return Err("<out-png> must be set".to_string());
     }
 
@@ -436,7 +445,6 @@ fn parse_args() -> Result<Args, String> {
         println!("Warning: --export-area-drawing has no effect when --export-id is set.");
     }
 
-    let dump = args.dump_svg.as_ref().map(|v| v.into());
     let export_id = args.export_id.as_ref().map(|v| v.to_string());
 
     // We don't have to keep named groups when we don't need them
@@ -469,7 +477,7 @@ fn parse_args() -> Result<Args, String> {
         None => None,
     };
 
-    let usvgr = usvgr::Options {
+    let usvg = usvgr::Options {
         resources_dir,
         dpi: args.dpi as f64,
         font_family: args
@@ -483,7 +491,6 @@ fn parse_args() -> Result<Args, String> {
         image_rendering: args.image_rendering,
         keep_named_groups,
         default_size,
-        fontdb,
         ..Default::default()
     };
 
@@ -494,17 +501,17 @@ fn parse_args() -> Result<Args, String> {
         export_id,
         export_area_page: args.export_area_page,
         export_area_drawing: args.export_area_drawing,
-        dump,
         perf: args.perf,
         quiet: args.quiet,
-        usvgr,
+        usvg,
+        fontdb,
         fit_to,
         background: args.background,
     })
 }
 
-fn load_fonts(args: &mut CliArgs) -> usvgr::fontdb::Database {
-    let mut fontdb = usvgr::fontdb::Database::new();
+fn load_fonts(args: &mut CliArgs) -> fontdb::Database {
+    let mut fontdb = fontdb::Database::new();
     if !args.skip_system_fonts {
         fontdb.load_system_fonts();
     }
@@ -560,25 +567,6 @@ fn query_all(tree: &usvgr::Tree) -> Result<(), String> {
         return Err("the file has no valid ID's".to_string());
     }
 
-    Ok(())
-}
-
-#[cfg(feature = "dump-svg")]
-fn dump_svg(tree: &usvgr::Tree, path: &path::Path) -> Result<(), String> {
-    use std::io::Write;
-
-    let mut f =
-        std::fs::File::create(path).map_err(|_| format!("failed to create a file {:?}", path))?;
-
-    f.write_all(tree.to_string(&usvgr::XmlOptions::default()).as_bytes())
-        .map_err(|_| format!("failed to write a file {:?}", path))?;
-
-    Ok(())
-}
-
-#[cfg(not(feature = "dump-svg"))]
-fn dump_svg(_: &usvgr::Tree, _: &path::Path) -> Result<(), String> {
-    log::warn!("The dump-svg feature is not enabled.");
     Ok(())
 }
 

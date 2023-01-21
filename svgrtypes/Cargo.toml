@@ -13,3 +13,4 @@ repository = "https://github.com/dmtrKovalenko/svgrtypes"
 
 [dependencies]
 siphasher = "0.3"
+kurbo = "0.8"

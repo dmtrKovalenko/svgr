@@ -1,14 +1,29 @@
-use std::sync::Arc;
+use std::{
+    collections::{hash_map, HashMap},
+    sync::Arc, ops::Deref,
+};
 
 use once_cell::sync::Lazy;
 use rgb::FromSlice;
 use svgr::SvgrCache;
 use usvgr::PreloadedImageData;
+use usvgr_text_layout::{fontdb, TreeTextToPath};
 
 #[rustfmt::skip]
 mod render;
 
 const IMAGE_SIZE: u32 = 300;
+
+static GLOBAL_FONTDB: Lazy<std::sync::Mutex<fontdb::Database>> = Lazy::new(|| {
+    let mut fontdb = fontdb::Database::new();
+    fontdb.load_fonts_dir("tests/fonts");
+    fontdb.set_serif_family("Noto Serif");
+    fontdb.set_sans_serif_family("Noto Sans");
+    fontdb.set_cursive_family("Yellowtail");
+    fontdb.set_fantasy_family("Sedgwick Ave Display");
+    fontdb.set_monospace_family("Noto Mono");
+    std::sync::Mutex::new(fontdb)
+});
 
 fn load_image(path: &str) -> Arc<PreloadedImageData> {
     let image_data = std::fs::read(path).unwrap();
@@ -22,38 +37,30 @@ fn load_image(path: &str) -> Arc<PreloadedImageData> {
     )
 }
 
-static GLOBAL_OPT: Lazy<std::sync::Mutex<usvgr::Options>> = Lazy::new(|| {
-    let mut opt = usvgr::Options::default();
-    opt.font_family = "Noto Sans".to_string();
-    opt.fontdb.load_fonts_dir("tests/fonts");
-    opt.fontdb.set_serif_family("Noto Serif");
-    opt.fontdb.set_sans_serif_family("Noto Sans");
-    opt.fontdb.set_cursive_family("Yellowtail");
-    opt.fontdb.set_fantasy_family("Sedgwick Ave Display");
-    opt.fontdb.set_monospace_family("Noto Mono");
-    opt.resources_dir = Some(std::path::PathBuf::from("tests/svg"));
+static GLOBAL_IMAGE_DATA: Lazy<Arc<HashMap<String, Arc<PreloadedImageData>>>> = Lazy::new(|| {
+    let mut hash_map = HashMap::new();
 
-    opt.image_data
-        .insert("image.png".to_owned(), load_image("tests/images/image.png"));
-    opt.image_data
-        .insert("image.jpg".to_owned(), load_image("tests/images/image.jpg"));
-    opt.image_data.insert(
-        "image-63x61.png".to_owned(),
-        load_image("tests/images/image-63x61.png"),
-    );
+    hash_map.insert("image.png".to_owned(), load_image("tests/images/image.png"));
+    hash_map.insert("image.jpg".to_owned(), load_image("tests/images/image.jpg"));
+    hash_map.insert("image-63x61.png".to_owned(), load_image("tests/images/image-63x61.png"));
 
-    std::sync::Mutex::new(opt)
+    Arc::new(hash_map)
 });
 
 pub fn render(name: &str) -> usize {
     let svg_path = format!("tests/svg/{}.svg", name);
     let png_path = format!("tests/png/{}.png", name);
 
-    // Do not unwrap on the from_data line, because panic will poison GLOBAL_OPT.
+    let mut opt = usvgr::Options::default();
+    opt.image_data = Some(&GLOBAL_IMAGE_DATA);
+    opt.resources_dir = Some(std::path::PathBuf::from("tests/svg"));
+
     let tree = {
         let svg_data = std::fs::read(&svg_path).unwrap();
-        let tree = usvgr::Tree::from_data(&svg_data, &GLOBAL_OPT.lock().unwrap().to_ref());
-        tree.unwrap()
+        let mut tree = usvgr::Tree::from_data(&svg_data, &opt).unwrap();
+        let db = GLOBAL_FONTDB.lock().unwrap();
+        tree.convert_text(&db, false);
+        tree
     };
 
     let fit_to = usvgr::FitTo::Width(IMAGE_SIZE);

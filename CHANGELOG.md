@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 This changelog also contains important changes in dependencies.
 
 ## [Unreleased]
+### Fixed
+- Missing `font-family` handling.
+
+## [0.28.0] - 2022-12-03
+### Added
+- `usvg::Text` and `usvg::NodeKind::Text`.
+
+### Changed
+- `usvg` isn't converting text to paths by default now. A caller must call
+  `usvg::Tree::convert_text` or `usvg::Text::convert` from ext-layout` crate on demand.
+- `usvg` text layout implementation moved into `usvg-text-layout` crate.
+- During SVG size recovery, when no `width`, `height` and `viewBox` attributes have been set,
+  text nodes are no longer taken into an account. This is because a text node has no bbox
+  before conversion into path(s), which we no longer doing during parsing.
+- `usvg` is purely an SVG parser now. It doesn't convert text to paths
+  and doesn't write SVG anymore.
+- `usvg::filter::ConvolveMatrixData` methods are fields now.
+
+### Removed
+- `usvg` CLI binary. No alternatives for now.
+- All `usvg` build features.
+  - `filter`. Filter elements are always parsed by `usvg` now.
+  - `text`. Text elements are always parsed by `usvg` now.
+  - `export`. `usvg` cannot write an SVG anymore.
+- `usvg::Tree::to_string`. `usvg` cannot write an SVG anymore.
+- `usvg::TransformFromBBox` trait. This is just a regular `usvg::Transform` method now.
+- `usvg::OptionsRef`. `usvg::Options` is enough from now.
+- `usvg::Options::fontdb`. Used only by `usvg-text-layout` now.
+- `--dump-svg` from `resvg`.
+
+## [0.27.0] - 2022-11-27
+### Added
+- `lengthAdjust` and `textLength` attributes support.
+- Support automatic `image` size detection.
+  `width` and `height` attributes can be omitted or set to `auto` on `image` now. SVG2
+
+### Fixed
+- `--query-all` flag in `resvg` CLI.
+- Percentage values resolving.
+
+## [0.26.1] - 2022-11-21
+### Fixed
+- Allow `dominant-baseline` and `alignment-baseline` to be set via CSS.
 
 ## [0.26.0] - 2022-11-20
 ### Added
@@ -677,7 +720,10 @@ This changelog also contains important changes in dependencies.
 ### Fixed
 - `font-size` attribute inheritance during `use` resolving.
 
-[Unreleased]: https://github.com/RazrFalcon/resvg/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/RazrFalcon/resvg/compare/v0.28.0...HEAD
+[0.28.0]: https://github.com/RazrFalcon/resvg/compare/v0.27.0...v0.28.0
+[0.27.0]: https://github.com/RazrFalcon/resvg/compare/v0.26.1...v0.27.0
+[0.26.1]: https://github.com/RazrFalcon/resvg/compare/v0.26.0...v0.26.1
 [0.26.0]: https://github.com/RazrFalcon/resvg/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/RazrFalcon/resvg/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/RazrFalcon/resvg/compare/v0.23.0...v0.24.0

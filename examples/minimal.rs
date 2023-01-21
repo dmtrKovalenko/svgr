@@ -1,3 +1,5 @@
+use usvgr_text_layout::{fontdb, TreeTextToPath};
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 3 {
@@ -10,15 +12,18 @@ fn main() {
     opt.resources_dir = std::fs::canonicalize(&args[1])
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()));
-    opt.fontdb.load_system_fonts();
+
+    let mut fontdb = fontdb::Database::new();
+    fontdb.load_system_fonts();
 
     let svg_data = std::fs::read(&args[1]).unwrap();
-    let rtree = usvgr::Tree::from_data(&svg_data, &opt.to_ref()).unwrap();
+    let mut tree = usvgr::Tree::from_data(&svg_data, &opt).unwrap();
+    tree.convert_text(&fontdb, opt.keep_named_groups);
 
-    let pixmap_size = rtree.size.to_screen_size();
+    let pixmap_size = tree.size.to_screen_size();
     let mut pixmap = tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).unwrap();
     svgr::render(
-        &rtree,
+        &tree,
         usvgr::FitTo::Original,
         tiny_skia::Transform::default(),
         pixmap.as_mut(),

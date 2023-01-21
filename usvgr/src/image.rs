@@ -7,9 +7,7 @@ use svgrtypes::Length;
 
 use crate::geom::{Rect, Transform, ViewBox};
 use crate::svgtree::{self, AId};
-use crate::{
-    converter, ImageRendering, Node, NodeExt, NodeKind, OptionLog, OptionsRef, Visibility,
-};
+use crate::{converter, Options, ImageRendering, Node, NodeExt, NodeKind, OptionLog, Visibility};
 
 /// Use this struct to preload, decode and cache images for the upcoming rendering.
 #[derive(Debug, Hash)]
@@ -110,7 +108,7 @@ pub(crate) fn convert(
 
     if !has_width || !has_height {
         let href = node.attribute::<&str>(AId::Href)?;
-        let data = state.opt.image_data.get(href)?;
+        let data = state.opt.image_data?.get(href)?;
         let native_width = data.width as f64;
         let native_height = data.height as f64;
 
@@ -156,6 +154,6 @@ pub(crate) fn convert(
     Some(())
 }
 
-pub(crate) fn get_href_data(href: &str, opt: &OptionsRef) -> Option<Arc<PreloadedImageData>> {
-    opt.image_data.get(href).map(Clone::clone)
+pub(crate) fn get_href_data(href: &str, opt: &Options) -> Option<Arc<PreloadedImageData>> {
+    opt.image_data?.get(href).map(Clone::clone)
 }

@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
 use usvgr::NodeExt;
+use usvgr_text_layout::fontdb;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -25,11 +26,13 @@ fn main() {
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()));
     opt.keep_named_groups = true;
-    opt.fontdb.load_system_fonts();
     let fit_to = usvgr::FitTo::Zoom(zoom);
 
+    let mut fontdb = fontdb::Database::new();
+    fontdb.load_system_fonts();
+
     let svg_data = std::fs::read(&args[1]).unwrap();
-    let mut rtree = usvgr::Tree::from_data(&svg_data, &opt.to_ref()).unwrap();
+    let mut rtree = usvgr::Tree::from_data(&svg_data, &opt).unwrap();
 
     let mut bboxes = Vec::new();
     let mut text_bboxes = Vec::new();

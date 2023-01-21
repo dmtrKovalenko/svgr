@@ -7,7 +7,7 @@
 
     <text id="text1" textLength="500">
         <tspan id="tspan1" x="20" y="100" textLength="50">Text1</tspan>
-        <tspan id="tspan2" x="20" y="140" textLength="120">Text2</tspan>
+        <tspan id="tspan2" x="20" y="140" textLength="150">Text2</tspan>
     </text>
 
     <!-- image frame -->

@@ -8,11 +8,10 @@ use std::collections::HashMap;
 
 use crate::geom::{FuzzyEq, Rect, Transform};
 use crate::{converter, units};
-use crate::{EnableBackground, Opacity, OptionsRef, SharedPathData, Units};
+use crate::{EnableBackground, Opacity, Options, SharedPathData, Units};
 
 #[rustfmt::skip] mod names;
 mod parse;
-#[cfg(feature = "text")]
 mod text;
 
 pub use names::{AId, EId};
@@ -129,11 +128,7 @@ struct AttributeId(usize);
 
 enum NodeKind {
     Root,
-    Element {
-        tag_name: EId,
-        attributes: Range,
-    },
-    #[cfg(feature = "text")]
+    Element { tag_name: EId, attributes: Range },
     Text(String),
 }
 
@@ -204,18 +199,11 @@ impl<'a> Node<'a> {
         self.id
     }
 
-    #[allow(dead_code)]
-    #[inline]
-    pub fn is_root(&self) -> bool {
-        matches!(self.d.kind, NodeKind::Root)
-    }
-
     #[inline]
     pub fn is_element(&self) -> bool {
         matches!(self.d.kind, NodeKind::Element { .. })
     }
 
-    #[cfg(feature = "text")]
     #[inline]
     pub fn is_text(&self) -> bool {
         matches!(self.d.kind, NodeKind::Text(_))
@@ -352,7 +340,6 @@ impl<'a> Node<'a> {
         Rect::new(vb.x, vb.y, vb.w, vb.h)
     }
 
-    #[cfg(feature = "text")]
     pub fn text(&self) -> &'a str {
         match self.d.kind {
             NodeKind::Element { .. } => match self.first_child() {
@@ -482,7 +469,6 @@ impl<'a> Node<'a> {
         )
     }
 
-    #[allow(dead_code)]
     pub fn try_convert_length(
         &self,
         aid: AId,
@@ -502,7 +488,7 @@ impl<'a> Node<'a> {
         self.convert_length(aid, Units::UserSpaceOnUse, state, def)
     }
 
-    pub fn is_visible_element(&self, opt: &OptionsRef) -> bool {
+    pub fn is_visible_element(&self, opt: &Options) -> bool {
         self.attribute(AId::Display) != Some("none")
             && self.has_valid_transform(AId::Transform)
             && crate::switch::is_condition_passed(*self, opt)
@@ -521,7 +507,6 @@ impl std::fmt::Debug for Node<'_> {
                     self.attributes()
                 )
             }
-            #[cfg(feature = "text")]
             NodeKind::Text(ref text) => write!(f, "Text({:?})", text),
         }
     }
@@ -816,13 +801,17 @@ impl AId {
     pub fn is_presentation(&self) -> bool {
         matches!(
             self,
-            AId::BaselineShift
+            AId::AlignmentBaseline
+                | AId::BaselineShift
                 | AId::ClipPath
                 | AId::ClipRule
                 | AId::Color
+                | AId::ColorInterpolation
                 | AId::ColorInterpolationFilters
+                | AId::ColorRendering
                 | AId::Direction
                 | AId::Display
+                | AId::DominantBaseline
                 | AId::Fill
                 | AId::FillOpacity
                 | AId::FillRule
@@ -830,20 +819,24 @@ impl AId {
                 | AId::FloodColor
                 | AId::FloodOpacity
                 | AId::FontFamily
-                | AId::FontKerning
+                | AId::FontKerning // technically not presentation
                 | AId::FontSize
+                | AId::FontSizeAdjust
                 | AId::FontStretch
                 | AId::FontStyle
                 | AId::FontVariant
                 | AId::FontWeight
+                | AId::GlyphOrientationHorizontal
+                | AId::GlyphOrientationVertical
                 | AId::ImageRendering
-                | AId::Isolation
+                | AId::Isolation // technically not presentation
                 | AId::LetterSpacing
+                | AId::LightingColor
                 | AId::MarkerEnd
                 | AId::MarkerMid
                 | AId::MarkerStart
                 | AId::Mask
-                | AId::MixBlendMode
+                | AId::MixBlendMode // technically not presentation
                 | AId::Opacity
                 | AId::Overflow
                 | AId::PaintOrder
@@ -860,8 +853,13 @@ impl AId {
                 | AId::StrokeWidth
                 | AId::TextAnchor
                 | AId::TextDecoration
+                | AId::TextOverflow
                 | AId::TextRendering
+                | AId::Transform
+                | AId::UnicodeBidi
+                | AId::VectorEffect
                 | AId::Visibility
+                | AId::WhiteSpace
                 | AId::WordSpacing
                 | AId::WritingMode
         )
@@ -944,8 +942,10 @@ fn is_non_inheritable(id: AId) -> bool {
             | AId::Mask
             | AId::Opacity
             | AId::Overflow
+            | AId::LightingColor
             | AId::StopColor
             | AId::StopOpacity
             | AId::TextDecoration
+            | AId::Transform
     )
 }

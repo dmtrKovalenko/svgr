@@ -5,54 +5,44 @@
 /*!
 `usvgr` (micro SVG) is an [SVG] simplification tool.
 
-## Purpose
+SVG is notoriously hard to parse. `usvg` presents a layer between an XML library and
+a potential SVG rendering library. It will parse an input SVG into a strongly-typed tree structure
+were all the elements, attributes, references and other SVG features are already resolved
+and presented in a simplest way possible.
+So a caller doesn't have to worry about most of the issues related to SVG parsing
+and can focus just on the rendering part.
 
-Imagine, that you have to extract some data from the [SVG] file, but your
-library/framework/language doesn't have a good SVG library.
-And all you need is paths data.
+## Features
 
-You can try to export it by yourself (how hard can it be, right).
-All you need is an XML library (I'll hope that your language has one).
-But soon you realize that paths data has a pretty complex format and a lot
-of edge-cases. And we didn't mention attributes propagation, transforms,
-visibility flags, attribute values validation, XML quirks, etc.
-It will take a lot of time and code to implement this stuff correctly.
-
-So, instead of creating a library that can be used from any language (impossible),
-*usvgr* takes a different approach. It converts an input SVG to an extremely
-simple representation, which is still a valid SVG.
-And now, all you need is to convert your SVG to a simplified one via *usvgr*
-and an XML library with some small amount of code.
-
-## Key features of the simplified SVG
-
-- No basic shapes (rect, circle, etc). Only paths
-- Simple paths:
-  - Only MoveTo, LineTo, CurveTo and ClosePath will be produced
-  - All path segments are in absolute coordinates
-  - No implicit segment commands
-  - All values are separated by space
-- All (supported) attributes are resolved. No implicit one
-- No `use`. Everything is resolved
-- No invisible elements
-- No invalid elements (like `rect` with negative/zero size)
-- No units (mm, em, etc.)
-- No comments
-- No DTD
-- No CSS (partial support)
-- No `script` (simply ignoring it)
-
-Full spec can be found [here](https://github.com/RazrFalcon/svgr/blob/master/docs/usvgr_spec.adoc).
+- All supported attributes are resolved.
+  No need to worry about inheritable, implicit and default attributes
+- CSS will be applied
+- Only simple paths
+  - Basic shapes (like `rect` and `circle`) will be converted into paths
+  - Paths contain only absolute *MoveTo*, *LineTo*, *CurveTo* and *ClosePath* segments.
+    ArcTo, implicit and relative segments will be converted
+- `use` will be resolved and replaced with the reference content
+- Nested `svg` will be resolved
+- Invalid, malformed elements will be removed
+- Relative length units (mm, em, etc.) will be converted into pixels/points
+- External images will be loaded
+- Internal, base64 images will be decoded
+- Dummy groups will be removed
+- All references (like `#elem` and `url(#elem)`) will be resolved
+- `switch` will be resolved
+- Text elements, which are probably the hardest part of SVG, will be completely resolved.
+  This includes all the attributes resolving, whitespaces preprocessing (`xml:space`),
+  text chunks and spans resolving
+- Markers will be converted into regular elements. No need to place them manually
+- All filters are supported. Including filter functions, like `filter="contrast(50%)"`
+- Recursive elements will be detected an removed
 
 ## Limitations
 
-- Currently, it's not lossless. Some SVG features isn't supported yet and will be ignored.
-- CSS support is minimal.
-- Scripting and animation isn't supported and not planned.
-- `a` elements will be removed.
-- Unsupported elements:
-  - some filter-based elements
-  - font-based elements
+- Unsupported SVG features will be ignored
+- CSS support is minimal
+- Only [static](http://www.w3.org/TR/SVG11/feature#SVG-static) SVG features,
+  e.g. no `a`, `view`, `cursor`, `script`, no events and no animations
 
 [SVG]: https://en.wikipedia.org/wiki/Scalable_Vector_Graphics
 */
@@ -108,9 +98,6 @@ macro_rules! impl_from_str {
 mod clippath;
 mod converter;
 mod error;
-#[cfg(feature = "export")]
-mod export;
-#[cfg(feature = "filter")]
 pub mod filter;
 mod geom;
 mod image;
@@ -123,12 +110,12 @@ mod shapes;
 mod style;
 mod svgtree;
 mod switch;
-#[cfg(feature = "text")]
 mod text;
 mod units;
 mod use_node;
 pub mod utils;
 
+use std::hash;
 use std::hash::Hash;
 use std::rc::Rc;
 
@@ -136,9 +123,6 @@ pub use strict_num::{ApproxEq, ApproxEqUlps, NonZeroPositiveF64, NormalizedF64, 
 pub use svgrtypes::{Align, AspectRatio};
 
 pub use roxmltree;
-
-#[cfg(feature = "text")]
-pub use fontdb;
 
 pub use crate::clippath::*;
 pub use crate::error::*;
@@ -149,6 +133,7 @@ pub use crate::options::*;
 pub use crate::paint_server::*;
 pub use crate::pathdata::*;
 pub use crate::style::*;
+pub use crate::text::*;
 
 trait OptionLog {
     fn log_none<F: FnOnce()>(self, f: F) -> Self;
@@ -162,17 +147,6 @@ impl<T> OptionLog for Option<T> {
             None
         })
     }
-}
-
-/// XML writing options.
-#[cfg(feature = "export")]
-#[derive(Clone, Default, Debug)]
-pub struct XmlOptions {
-    /// Used to add a custom prefix to each element ID during writing.
-    pub id_prefix: Option<String>,
-
-    /// `xmlwriter` options.
-    pub writer_opts: xmlwriter::Options,
 }
 
 /// Checks that type has a default value.
@@ -291,7 +265,7 @@ impl_from_str!(ShapeRendering);
 ///
 /// `text-rendering` attribute in the SVG.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Hash, Copy, PartialEq, Eq, Debug)]
 pub enum TextRendering {
     OptimizeSpeed,
     OptimizeLegibility,
@@ -379,6 +353,7 @@ pub enum NodeKind {
     Group(Group),
     Path(Path),
     Image(Image),
+    Text(Text),
 }
 
 impl NodeKind {
@@ -388,6 +363,7 @@ impl NodeKind {
             NodeKind::Group(ref e) => e.id.as_str(),
             NodeKind::Path(ref e) => e.id.as_str(),
             NodeKind::Image(ref e) => e.id.as_str(),
+            NodeKind::Text(ref e) => e.id.as_str(),
         }
     }
 
@@ -397,6 +373,7 @@ impl NodeKind {
             NodeKind::Group(ref e) => e.transform,
             NodeKind::Path(ref e) => e.transform,
             NodeKind::Image(ref e) => e.transform,
+            NodeKind::Text(ref e) => e.transform,
         }
     }
 }
@@ -537,19 +514,16 @@ pub struct Group {
     pub mask: Option<Rc<Mask>>,
 
     /// Element's filters.
-    #[cfg(feature = "filter")]
     pub filters: Vec<Rc<filter::Filter>>,
 
     /// Contains a fill color or paint server used by `FilterInput::FillPaint`.
     ///
     /// Will be set only when filter actually has a `FilterInput::FillPaint`.
-    #[cfg(feature = "filter")]
     pub filter_fill: Option<Paint>,
 
     /// Contains a fill color or paint server used by `FilterInput::StrokePaint`.
     ///
     /// Will be set only when filter actually has a `FilterInput::StrokePaint`.
-    #[cfg(feature = "filter")]
     pub filter_stroke: Option<Paint>,
 
     /// Indicates that this node can be accessed via `filter`.
@@ -568,11 +542,8 @@ impl Default for Group {
             isolate: false,
             clip_path: None,
             mask: None,
-            #[cfg(feature = "filter")]
             filters: Vec::new(),
-            #[cfg(feature = "filter")]
             filter_fill: None,
-            #[cfg(feature = "filter")]
             filter_stroke: None,
             enable_background: None,
         }
@@ -600,6 +571,7 @@ impl std::hash::Hash for HashedNode<'_> {
             NodeKind::Group(group) => group.hash(state),
             NodeKind::Path(path) => path.hash(state),
             NodeKind::Image(img) => img.hash(state), 
+            NodeKind::Text(text) => text.hash(state),
         }
 
         self.0
@@ -637,10 +609,11 @@ impl Tree {
     /// Parses `Tree` from an SVG data.
     ///
     /// Can contain an SVG string or a gzip compressed data.
-    pub fn from_data(data: &[u8], opt: &OptionsRef) -> Result<Self, Error> {
+    pub fn from_data(data: &[u8], opt: &Options) -> Result<Self, Error> {
         if data.starts_with(&[0x1f, 0x8b]) {
-            let text = deflate(data)?;
-            Self::from_str(&text, opt)
+            let data = decompress_svgz(data)?;
+            let text = std::str::from_utf8(&data).map_err(|_| Error::NotAnUtf8Str)?;
+            Self::from_str(text, opt)
         } else {
             let text = std::str::from_utf8(data).map_err(|_| Error::NotAnUtf8Str)?;
             Self::from_str(text, opt)
@@ -648,7 +621,7 @@ impl Tree {
     }
 
     /// Parses `Tree` from an SVG string.
-    pub fn from_str(text: &str, opt: &OptionsRef) -> Result<Self, Error> {
+    pub fn from_str(text: &str, opt: &Options) -> Result<Self, Error> {
         let mut xml_opt = roxmltree::ParsingOptions::default();
         xml_opt.allow_dtd = true;
 
@@ -659,7 +632,7 @@ impl Tree {
     }
 
     /// Parses `Tree` from `roxmltree::Document`.
-    pub fn from_xmltree(doc: &roxmltree::Document, opt: &OptionsRef) -> Result<Self, Error> {
+    pub fn from_xmltree(doc: &roxmltree::Document, opt: &Options) -> Result<Self, Error> {
         let doc = svgtree::Document::parse(doc)?;
         Self::from_svgtree(doc, opt)
     }
@@ -667,10 +640,11 @@ impl Tree {
     /// Parses `Tree` from the `svgtree::Document`.
     ///
     /// An empty `Tree` will be returned on any error.
-    fn from_svgtree(doc: svgtree::Document, opt: &OptionsRef) -> Result<Self, Error> {
+    fn from_svgtree(doc: svgtree::Document, opt: &Options) -> Result<Self, Error> {
         crate::converter::convert_doc(&doc, opt)
     }
 
+    // TODO: remove
     /// Returns renderable node by ID.
     ///
     /// If an empty ID is provided, than this method will always return `None`.
@@ -683,11 +657,9 @@ impl Tree {
         self.root.descendants().find(|node| &*node.id() == id)
     }
 
-    #[inline]
-    #[cfg(feature = "export")]
-    /// Exports the tree to an SVG string. String is formatted.
-    pub fn to_string(&self, opt: &XmlOptions) -> String {
-        crate::export::convert(self, opt)
+    /// Ungroups groups inside the `root` node.
+    pub fn ungroup_groups(root: Node, keep_named_groups: bool) {
+        converter::ungroup_groups(root, keep_named_groups);
     }
 }
 
@@ -714,15 +686,17 @@ pub trait NodeExt {
     /// Appends `kind` as a node child.
     ///
     /// Shorthand for `Node::append(Node::new(Box::new(kind)))`.
-    fn append_kind(&mut self, kind: NodeKind) -> Node;
+    fn append_kind(&self, kind: NodeKind) -> Node;
 
     /// Calculates node's absolute bounding box.
     ///
     /// Can be expensive on large paths and groups.
+    ///
+    /// Always returns `None` for `NodeKind::Text` since we cannot calculate its bbox
+    /// without converting it into paths first.
     fn calculate_bbox(&self) -> Option<PathBbox>;
 
     /// Returns the node starting from which the filter background should be rendered.
-    #[cfg(feature = "filter")]
     fn filter_background_start_node(&self, filter: &filter::Filter) -> Option<Node>;
 }
 
@@ -752,7 +726,7 @@ impl NodeExt for Node {
     }
 
     #[inline]
-    fn append_kind(&mut self, kind: NodeKind) -> Node {
+    fn append_kind(&self, kind: NodeKind) -> Node {
         let new_node = Node::new(kind);
         self.append(new_node.clone());
         new_node
@@ -763,7 +737,6 @@ impl NodeExt for Node {
         calc_node_bbox(self, self.abs_transform())
     }
 
-    #[cfg(feature = "filter")]
     fn filter_background_start_node(&self, filter: &filter::Filter) -> Option<Node> {
         fn has_enable_background(node: &Node) -> bool {
             if let NodeKind::Group(ref g) = *node.borrow() {
@@ -793,7 +766,8 @@ impl NodeExt for Node {
     }
 }
 
-fn deflate(data: &[u8]) -> Result<String, Error> {
+/// Decompresses an SVGZ file.
+pub fn decompress_svgz(data: &[u8]) -> Result<Vec<u8>, Error> {
     use std::io::Read;
 
     let mut decoder = flate2::read::GzDecoder::new(data);
@@ -801,7 +775,6 @@ fn deflate(data: &[u8]) -> Result<String, Error> {
     decoder
         .read_to_end(&mut decoded)
         .map_err(|_| Error::MalformedGZip)?;
-    let decoded = String::from_utf8(decoded).map_err(|_| Error::NotAnUtf8Str)?;
     Ok(decoded)
 }
 
@@ -830,5 +803,6 @@ fn calc_node_bbox(node: &Node, ts: Transform) -> Option<PathBbox> {
 
             Some(bbox)
         }
+        NodeKind::Text(_) => None,
     }
 }

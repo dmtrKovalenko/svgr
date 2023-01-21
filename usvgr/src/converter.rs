@@ -24,21 +24,19 @@ pub struct State<'a> {
     /// Used only during nested `svg` size resolving.
     /// Width and height can be set independently.
     pub(crate) use_size: (Option<f64>, Option<f64>),
-    pub(crate) opt: &'a OptionsRef<'a>,
+    pub(crate) opt: &'a Options<'a>,
 }
 
 #[derive(Default)]
 pub struct Cache {
     pub clip_paths: HashMap<String, Rc<ClipPath>>,
     pub masks: HashMap<String, Rc<Mask>>,
-    #[cfg(feature = "filter")]
     pub filters: HashMap<String, Rc<filter::Filter>>,
     pub paint: HashMap<String, Paint>,
 
     // used for ID generation
     pub all_ids: HashSet<u64>,
     pub clip_path_index: usize,
-    #[allow(dead_code)]
     pub filter_index: usize,
 }
 
@@ -54,7 +52,6 @@ impl Cache {
         }
     }
 
-    #[cfg(feature = "filter")]
     pub fn gen_filter_id(&mut self) -> String {
         loop {
             self.filter_index += 1;
@@ -80,7 +77,7 @@ fn string_hash(s: &str) -> u64 {
 ///
 /// - If `Document` doesn't have an SVG node - returns an empty tree.
 /// - If `Document` doesn't have a valid size - returns `Error::InvalidSize`.
-pub(crate) fn convert_doc(svg_doc: &svgtree::Document, opt: &OptionsRef) -> Result<Tree, Error> {
+pub(crate) fn convert_doc(svg_doc: &svgtree::Document, opt: &Options) -> Result<Tree, Error> {
     let svg = svg_doc.root_element();
     let (size, restore_viewbox) = resolve_svg_size(&svg, opt);
     let size = size?;
@@ -132,7 +129,7 @@ pub(crate) fn convert_doc(svg_doc: &svgtree::Document, opt: &OptionsRef) -> Resu
     Ok(tree)
 }
 
-fn resolve_svg_size(svg: &svgtree::Node, opt: &OptionsRef) -> (Result<Size, Error>, bool) {
+fn resolve_svg_size(svg: &svgtree::Node, opt: &Options) -> (Result<Size, Error>, bool) {
     let mut state = State {
         parent_clip_path: None,
         parent_marker: None,
@@ -284,12 +281,8 @@ pub(crate) fn convert_element(
         EId::Image => {
             image::convert(node, state, parent);
         }
-        EId::Text =>
-        {
-            #[cfg(feature = "text")]
-            if !state.opt.fontdb.is_empty() {
-                text::convert(node, state, cache, parent);
-            }
+        EId::Text => {
+            text::convert(node, state, cache, parent);
         }
         EId::Svg => {
             if node.parent_element().is_some() {
@@ -350,12 +343,8 @@ pub(crate) fn convert_clip_path_elements(
                     convert_path(node, path, state, cache, parent);
                 }
             }
-            EId::Text =>
-            {
-                #[cfg(feature = "text")]
-                if !state.opt.fontdb.is_empty() {
-                    text::convert(node, state, cache, parent);
-                }
+            EId::Text => {
+                text::convert(node, state, cache, parent);
             }
             _ => {
                 log::warn!("'{}' is no a valid 'clip-path' child.", tag_name);
@@ -430,7 +419,6 @@ pub(crate) fn convert_group(
         None
     };
 
-    #[cfg(feature = "filter")]
     let (filters, filter_fill, filter_stroke) = {
         let mut filters = Vec::new();
         if state.parent_clip_path.is_none() {
@@ -462,9 +450,6 @@ pub(crate) fn convert_group(
 
         (filters, filter_fill, filter_stroke)
     };
-
-    #[cfg(not(feature = "filter"))]
-    let filters: Vec<usize> = Vec::new();
 
     let transform: Transform = node.resolve_transform(state).unwrap_or_default();
     let blend_mode: BlendMode = node.attribute(AId::MixBlendMode).unwrap_or_default();
@@ -501,11 +486,8 @@ pub(crate) fn convert_group(
             isolate,
             clip_path,
             mask,
-            #[cfg(feature = "filter")]
             filters,
-            #[cfg(feature = "filter")]
             filter_fill,
-            #[cfg(feature = "filter")]
             filter_stroke,
             enable_background,
         }));
@@ -516,7 +498,6 @@ pub(crate) fn convert_group(
     }
 }
 
-#[cfg(feature = "filter")]
 fn resolve_filter_fill(
     node: svgtree::Node,
     state: &State,
@@ -543,7 +524,6 @@ fn resolve_filter_fill(
     Some(stroke.paint)
 }
 
-#[cfg(feature = "filter")]
 fn resolve_filter_stroke(
     node: svgtree::Node,
     state: &State,
@@ -578,7 +558,6 @@ fn remove_empty_groups(tree: &mut Tree) {
         while let Some(node) = curr_node {
             curr_node = node.next_sibling();
 
-            #[cfg(feature = "filter")]
             let is_g = if let NodeKind::Group(ref g) = *node.borrow() {
                 // Skip empty groups when they do not have a `filter` property.
                 // The `filter` property can be set on empty groups. For example:
@@ -589,13 +568,6 @@ fn remove_empty_groups(tree: &mut Tree) {
                 // </filter>
                 // <g filter="url(#filter1)"/>
                 g.filters.is_empty()
-            } else {
-                false
-            };
-
-            #[cfg(not(feature = "filter"))]
-            let is_g = if let NodeKind::Group(_) = *node.borrow() {
-                true
             } else {
                 false
             };
@@ -627,17 +599,10 @@ pub(crate) fn ungroup_groups(root: Node, keep_named_groups: bool) {
             let mut ts = Transform::default();
             let is_ok = if let NodeKind::Group(ref g) = *node.borrow() {
                 ts = g.transform;
-
-                #[cfg(feature = "filter")]
-                let no_filters = g.filters.is_empty();
-
-                #[cfg(not(feature = "filter"))]
-                let no_filters = true;
-
                 g.opacity == Opacity::ONE
                     && g.clip_path.is_none()
                     && g.mask.is_none()
-                    && no_filters
+                    && g.filters.is_empty()
                     && g.enable_background.is_none()
                     && g.blend_mode == BlendMode::Normal
                     && !g.isolate
@@ -661,6 +626,9 @@ pub(crate) fn ungroup_groups(root: Node, keep_named_groups: bool) {
                         }
                         NodeKind::Group(ref mut g) => {
                             g.transform.prepend(&ts);
+                        }
+                        NodeKind::Text(ref mut text) => {
+                            text.transform.prepend(&ts);
                         }
                     }
 

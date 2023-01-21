@@ -3,7 +3,7 @@ use svgr::SvgrCache;
 
 fn main() {
     let mut opt = usvgr::Options::default();
-    opt.fontdb.load_system_fonts();
+    // opt.fontdb.load_system_fonts();
 
     let mut cache = SvgrCache::new(NonZeroUsize::new(5).unwrap());
     // This example shows how you can use cache to reuse rendering of inidividual nodes between rendering.
@@ -27,7 +27,7 @@ fn main() {
 </svg>",
                 i
             ),
-            &opt.to_ref(),
+            &opt,
         )
         .unwrap();
 

@@ -135,6 +135,7 @@ pub(crate) fn render_node(
         ),
         usvgr::NodeKind::Image(ref img) => Some(crate::image::draw(img, canvas)),
         usvgr::NodeKind::Group(ref g) => render_group_impl(tree, node, g, state, canvas, cache),
+        usvgr::NodeKind::Text(_) => None,
     }
 }
 
@@ -527,7 +528,7 @@ fn prepare_filter_stroke_paint(
     Some(sub_pixmap)
 }
 
-fn convert_blend_mode(mode: usvgr::BlendMode) -> tiny_skia::BlendMode {
+pub(crate) fn convert_blend_mode(mode: usvgr::BlendMode) -> tiny_skia::BlendMode {
     match mode {
         usvgr::BlendMode::Normal => tiny_skia::BlendMode::SourceOver,
         usvgr::BlendMode::Multiply => tiny_skia::BlendMode::Multiply,
