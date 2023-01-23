@@ -50,7 +50,7 @@ pub trait TreeTextToPath {
     fn convert_text_with_cache(
         &mut self,
         fontdb: &fontdb::Database,
-        cache: &mut UsvgrTextCache,
+        cache: &mut UsvgrTextLayoutCache,
         fonts_cache: &mut FontsCache,
         keep_named_groups: bool,
     );
@@ -58,9 +58,9 @@ pub trait TreeTextToPath {
 
 /// Text layout cache. An lru cache strategy that holds an individual text node path group.
 #[derive(Debug)]
-pub struct UsvgrTextCache(Option<lru::LruCache<u64, (Vec<Path>, PathBbox)>>);
+pub struct UsvgrTextLayoutCache(Option<lru::LruCache<u64, (Vec<Path>, PathBbox)>>);
 
-impl UsvgrTextCache {
+impl UsvgrTextLayoutCache {
     /// Creates a new cache with the specified capacity.
     /// If capacity <= 0 then cache is disabled.
     pub fn new(size: usize) -> Self {
@@ -73,7 +73,7 @@ impl UsvgrTextCache {
 
     /// Creates disabled cache object
     pub fn none() -> Self {
-        UsvgrTextCache(None)
+        UsvgrTextLayoutCache(None)
     }
 
     fn get_or_insert(
@@ -95,7 +95,7 @@ impl TreeTextToPath for usvgr::Tree {
             self.root.clone(),
             fontdb,
             keep_named_groups,
-            &mut UsvgrTextCache::none(),
+            &mut UsvgrTextLayoutCache::none(),
             &mut FontsCache(HashMap::new()),
         );
     }
@@ -103,7 +103,7 @@ impl TreeTextToPath for usvgr::Tree {
     fn convert_text_with_cache(
         &mut self,
         fontdb: &fontdb::Database,
-        cache: &mut UsvgrTextCache,
+        text_layouts_cache: &mut UsvgrTextLayoutCache,
         fonts_cache: &mut FontsCache,
         keep_named_groups: bool,
     ) {
@@ -111,7 +111,7 @@ impl TreeTextToPath for usvgr::Tree {
             self.root.clone(),
             fontdb,
             keep_named_groups,
-            cache,
+            text_layouts_cache,
             fonts_cache,
         );
     }
@@ -126,7 +126,7 @@ pub trait TextToPath {
         &self,
         fontdb: &fontdb::Database,
         absolute_ts: Transform,
-        cache: &mut UsvgrTextCache,
+        cache: &mut UsvgrTextLayoutCache,
         fonts_cache: &mut FontsCache,
     ) -> Option<Node>;
 }
@@ -136,7 +136,7 @@ impl TextToPath for Text {
         &self,
         fontdb: &fontdb::Database,
         absolute_ts: Transform,
-        cache: &mut UsvgrTextCache,
+        cache: &mut UsvgrTextLayoutCache,
         fonts_cache: &mut FontsCache,
     ) -> Option<Node> {
         let mut hasher = DefaultHasher::new();
@@ -173,7 +173,7 @@ fn convert_text(
     root: Node,
     fontdb: &fontdb::Database,
     keep_named_groups: bool,
-    cache: &mut UsvgrTextCache,
+    cache: &mut UsvgrTextLayoutCache,
     fonts_cache: &mut FontsCache,
 ) {
     let mut text_nodes = Vec::new();

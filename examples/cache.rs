@@ -1,5 +1,5 @@
 use svgr::SvgrCache;
-use usvgr_text_layout::{fontdb, FontsCache, TreeTextToPath, UsvgrTextCache};
+use usvgr_text_layout::{fontdb, FontsCache, TreeTextToPath, UsvgrTextLayoutCache};
 
 fn main() {
     let opt = usvgr::Options::default();
@@ -8,8 +8,8 @@ fn main() {
     fontdb.load_system_fonts();
 
     let mut cache = SvgrCache::new(5);
-    let mut text_cache = UsvgrTextCache::new(3);
-    let mut font_cache = FontsCache::new();
+    let mut text_layouts_cache = UsvgrTextLayoutCache::new(3);
+    let mut fonts_cache = FontsCache::new();
     // This example shows how you can use cache to reuse rendering of inidividual nodes between rendering.
     // let mut cache = SvgrCache::none();
 
@@ -34,7 +34,7 @@ fn main() {
         )
         .unwrap();
 
-        rtree.convert_text_with_cache(&fontdb, &mut text_cache, &mut font_cache, true);
+        rtree.convert_text_with_cache(&fontdb, &mut text_layouts_cache, &mut fonts_cache, true);
 
         svgr::render(
             &rtree,
