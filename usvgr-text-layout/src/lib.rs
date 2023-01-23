@@ -22,11 +22,14 @@ An [SVG] text layout implementation on top of [`usvg`] crate.
 #![allow(clippy::upper_case_acronyms)]
 
 pub use fontdb;
+pub use lru;
 
-use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
 use std::convert::TryFrom;
+use std::hash::{Hash, Hasher};
 use std::num::NonZeroU16;
 use std::rc::Rc;
+use std::{collections::HashMap, num::NonZeroUsize};
 
 use fontdb::{Database, ID};
 use kurbo::{ParamCurve, ParamCurveArclen, ParamCurveDeriv};
@@ -42,11 +45,75 @@ pub trait TreeTextToPath {
     /// We have not pass `Options::keep_named_groups` again,
     /// since this method affects the tree structure.
     fn convert_text(&mut self, fontdb: &fontdb::Database, keep_named_groups: bool);
+
+    /// Converts text nodes into paths involving cache for every individual text node.
+    fn convert_text_with_cache(
+        &mut self,
+        fontdb: &fontdb::Database,
+        cache: &mut UsvgrTextCache,
+        fonts_cache: &mut FontsCache,
+        keep_named_groups: bool,
+    );
+}
+
+/// Text layout cache. An lru cache strategy that holds an individual text node path group.
+#[derive(Debug)]
+pub struct UsvgrTextCache(Option<lru::LruCache<u64, (Vec<Path>, PathBbox)>>);
+
+impl UsvgrTextCache {
+    /// Creates a new cache with the specified capacity.
+    /// If capacity <= 0 then cache is disabled.
+    pub fn new(size: usize) -> Self {
+        if size > 0 {
+            Self(Some(lru::LruCache::new(NonZeroUsize::new(size).unwrap())))
+        } else {
+            Self::none()
+        }
+    }
+
+    /// Creates disabled cache object
+    pub fn none() -> Self {
+        UsvgrTextCache(None)
+    }
+
+    fn get_or_insert(
+        &mut self,
+        key: u64,
+        f: impl FnOnce() -> (Vec<Path>, PathBbox),
+    ) -> (Vec<Path>, PathBbox) {
+        if let Some(cache) = self.0.as_mut() {
+            cache.get_or_insert(key, f).to_owned()
+        } else {
+            f()
+        }
+    }
 }
 
 impl TreeTextToPath for usvgr::Tree {
     fn convert_text(&mut self, fontdb: &fontdb::Database, keep_named_groups: bool) {
-        convert_text(self.root.clone(), fontdb, keep_named_groups);
+        convert_text(
+            self.root.clone(),
+            fontdb,
+            keep_named_groups,
+            &mut UsvgrTextCache::none(),
+            &mut FontsCache(HashMap::new()),
+        );
+    }
+
+    fn convert_text_with_cache(
+        &mut self,
+        fontdb: &fontdb::Database,
+        cache: &mut UsvgrTextCache,
+        fonts_cache: &mut FontsCache,
+        keep_named_groups: bool,
+    ) {
+        convert_text(
+            self.root.clone(),
+            fontdb,
+            keep_named_groups,
+            cache,
+            fonts_cache,
+        );
     }
 }
 
@@ -55,12 +122,31 @@ pub trait TextToPath {
     /// Converts the text node into path(s).
     ///
     /// `absolute_ts` is node's absolute transform. Used primarily during text-on-path resolving.
-    fn convert(&self, fontdb: &fontdb::Database, absolute_ts: Transform) -> Option<Node>;
+    fn convert(
+        &self,
+        fontdb: &fontdb::Database,
+        absolute_ts: Transform,
+        cache: &mut UsvgrTextCache,
+        fonts_cache: &mut FontsCache,
+    ) -> Option<Node>;
 }
 
 impl TextToPath for Text {
-    fn convert(&self, fontdb: &fontdb::Database, absolute_ts: Transform) -> Option<Node> {
-        let (new_paths, bbox) = text_to_paths(self, fontdb, absolute_ts);
+    fn convert(
+        &self,
+        fontdb: &fontdb::Database,
+        absolute_ts: Transform,
+        cache: &mut UsvgrTextCache,
+        fonts_cache: &mut FontsCache,
+    ) -> Option<Node> {
+        let mut hasher = DefaultHasher::new();
+        self.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        let (new_paths, bbox) = cache.get_or_insert(hash, || {
+            text_to_paths(self, fontdb, absolute_ts, fonts_cache)
+        });
+
         if new_paths.is_empty() {
             return None;
         }
@@ -83,29 +169,59 @@ impl TextToPath for Text {
     }
 }
 
-fn convert_text(root: Node, fontdb: &fontdb::Database, keep_named_groups: bool) {
+fn convert_text(
+    root: Node,
+    fontdb: &fontdb::Database,
+    keep_named_groups: bool,
+    cache: &mut UsvgrTextCache,
+    fonts_cache: &mut FontsCache,
+) {
     let mut text_nodes = Vec::new();
     // We have to update text nodes in clipPaths, masks and patterns as well.
     for node in root.descendants() {
         match *node.borrow() {
             NodeKind::Group(ref g) => {
                 if let Some(ref clip) = g.clip_path {
-                    convert_text(clip.root.clone(), fontdb, keep_named_groups);
+                    convert_text(
+                        clip.root.clone(),
+                        fontdb,
+                        keep_named_groups,
+                        cache,
+                        fonts_cache,
+                    );
                 }
 
                 if let Some(ref mask) = g.mask {
-                    convert_text(mask.root.clone(), fontdb, keep_named_groups);
+                    convert_text(
+                        mask.root.clone(),
+                        fontdb,
+                        keep_named_groups,
+                        cache,
+                        fonts_cache,
+                    );
                 }
             }
             NodeKind::Path(ref path) => {
                 if let Some(ref fill) = path.fill {
                     if let Paint::Pattern(ref p) = fill.paint {
-                        convert_text(p.root.clone(), fontdb, keep_named_groups);
+                        convert_text(
+                            p.root.clone(),
+                            fontdb,
+                            keep_named_groups,
+                            cache,
+                            fonts_cache,
+                        );
                     }
                 }
                 if let Some(ref stroke) = path.stroke {
                     if let Paint::Pattern(ref p) = stroke.paint {
-                        convert_text(p.root.clone(), fontdb, keep_named_groups);
+                        convert_text(
+                            p.root.clone(),
+                            fontdb,
+                            keep_named_groups,
+                            cache,
+                            fonts_cache,
+                        );
                     }
                 }
             }
@@ -117,12 +233,24 @@ fn convert_text(root: Node, fontdb: &fontdb::Database, keep_named_groups: bool) 
                     for span in &chunk.spans {
                         if let Some(ref fill) = span.fill {
                             if let Paint::Pattern(ref p) = fill.paint {
-                                convert_text(p.root.clone(), fontdb, keep_named_groups);
+                                convert_text(
+                                    p.root.clone(),
+                                    fontdb,
+                                    keep_named_groups,
+                                    cache,
+                                    fonts_cache,
+                                );
                             }
                         }
                         if let Some(ref stroke) = span.stroke {
                             if let Paint::Pattern(ref p) = stroke.paint {
-                                convert_text(p.root.clone(), fontdb, keep_named_groups);
+                                convert_text(
+                                    p.root.clone(),
+                                    fontdb,
+                                    keep_named_groups,
+                                    cache,
+                                    fonts_cache,
+                                );
                             }
                         }
                     }
@@ -140,7 +268,7 @@ fn convert_text(root: Node, fontdb: &fontdb::Database, keep_named_groups: bool) 
         if let NodeKind::Text(ref text) = *node.borrow() {
             let mut absolute_ts = node.parent().unwrap().abs_transform();
             absolute_ts.append(&text.transform);
-            new_node = text.convert(fontdb, absolute_ts);
+            new_node = text.convert(fontdb, absolute_ts, cache, fonts_cache);
         }
 
         if let Some(new_node) = new_node {
@@ -503,14 +631,29 @@ fn resolve_baseline(span: &TextSpan, font: &ResolvedFont, writing_mode: WritingM
     return shift;
 }
 
-type FontsCache = HashMap<Font, Rc<ResolvedFont>>;
+type FontsCacheInner = HashMap<Font, Rc<ResolvedFont>>;
+
+#[derive(Debug)]
+/// Fonts cache. Contains resolved font files from the `fontdb` database.
+/// Have no capacity option because there is no sense in clearing fonts cache, at least for fframes 
+/// If font is used within one frame there is a high chance it will be used at some future frame as well.
+pub struct FontsCache(FontsCacheInner);
+
+impl FontsCache {
+    /// Creates a new empty cache.
+    pub fn new() -> Self {
+        FontsCache(HashMap::new())
+    }
+}
 
 fn text_to_paths(
     text_node: &Text,
     fontdb: &fontdb::Database,
     abs_ts: Transform,
+    fonts_cache: &mut FontsCache,
 ) -> (Vec<Path>, PathBbox) {
-    let mut fonts_cache: FontsCache = HashMap::new();
+    let fonts_cache = &mut fonts_cache.0;
+
     for chunk in &text_node.chunks {
         for span in &chunk.spans {
             if !fonts_cache.contains_key(&span.font) {
@@ -1072,7 +1215,7 @@ impl<'a> Iterator for GlyphClusters<'a> {
 /// but not the text layouting. So all clusters are in the 0x0 position.
 fn outline_chunk(
     chunk: &TextChunk,
-    fonts_cache: &FontsCache,
+    fonts_cache: &FontsCacheInner,
     fontdb: &fontdb::Database,
 ) -> Vec<OutlinedCluster> {
     let mut glyphs = Vec::new();
@@ -1403,7 +1546,7 @@ fn resolve_clusters_positions(
     rotate_list: &[f64],
     writing_mode: WritingMode,
     ts: Transform,
-    fonts_cache: &FontsCache,
+    fonts_cache: &FontsCacheInner,
     clusters: &mut [OutlinedCluster],
 ) -> (f64, f64) {
     match chunk.text_flow {
@@ -1476,7 +1619,7 @@ fn resolve_clusters_positions_path(
     rotate_list: &[f64],
     writing_mode: WritingMode,
     ts: Transform,
-    fonts_cache: &FontsCache,
+    fonts_cache: &FontsCacheInner,
     clusters: &mut [OutlinedCluster],
 ) -> (f64, f64) {
     let mut last_x = 0.0;

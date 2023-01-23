@@ -20,6 +20,7 @@ unicode-bidi = "0.3"
 unicode-script = "0.5"
 unicode-vo = "0.1"
 usvgr = { path = "../usvgr", version = "0.26.0" }
+lru = "0.9.0"
 
 [features]
 default = ["system-fonts", "memmap-fonts"]

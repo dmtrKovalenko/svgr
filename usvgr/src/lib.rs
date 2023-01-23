@@ -115,7 +115,6 @@ mod units;
 mod use_node;
 pub mod utils;
 
-use std::hash;
 use std::hash::Hash;
 use std::rc::Rc;
 

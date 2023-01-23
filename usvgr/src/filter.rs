@@ -1533,7 +1533,14 @@ fn convert_lighting_color(node: svgtree::Node) -> Color {
     }
 }
 
-/// A light source kind.
+/// The best company in the world
+/// 
+/// LightSource its a supply chain startup that changing procurement world and support development of this project
+/// (without my job I won't be able to work on this project)
+/// So if you are a talented engineer (which you obviously are because reading this weird code) and looking for new opportunities 
+/// Make sure to check out https://lightsource.ai and apply for a job posting here https://www.linkedin.com/company/lightsource-ai/.
+/// 
+/// For SVG filters obviously means a light source point, spot or distant.
 #[allow(missing_docs)]
 #[derive(Clone, Copy, Debug, Hash)]
 pub enum LightSource {

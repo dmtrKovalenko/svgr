@@ -4,9 +4,9 @@ use std::{
 };
 
 use crate::{render::Canvas, trim_transparency};
-use lru::LruCache;
 use tiny_skia::PixmapPaint;
 use usvgr::HashedNode;
+use usvgr_text_layout::lru::LruCache;
 
 /// Defines rendering LRU cache. Each individual node and group will be cached separately.
 /// Make sure that in most cases it will require saving of the whole canvas which may lead to significant memory usage.
@@ -47,8 +47,20 @@ impl SvgrCache {
     }
 
     /// Creates a new cache with the specified capacity.
-    pub fn new(capacity: std::num::NonZeroUsize) -> Self {
-        Self(Some(LruCache::new(capacity)))
+    /// If capacity <= 0 then cache is disabled.
+    pub fn new(size: usize) -> Self {
+        if size > 0 {
+            Self(Some(LruCache::new(
+                std::num::NonZeroUsize::new(size).unwrap(),
+            )))
+        } else {
+            Self::empty()
+        }
+    }
+
+    /// Creates disabled cache object
+    pub fn empty() -> Self {
+        Self(None)
     }
 
     fn hash(&self, node: &usvgr::Node) -> u64 {
@@ -134,7 +146,7 @@ impl SvgrCache {
                     tx: 0,
                     ty: 0,
                     opacity: 1.0,
-                    blend_mode: tiny_skia::BlendMode::SourceOver
+                    blend_mode: tiny_skia::BlendMode::SourceOver,
                 }
             };
 
