@@ -644,7 +644,7 @@ dependencies = [
 
 [[package]]
 name = "svgr"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "gif",
  "image",
@@ -663,7 +663,7 @@ dependencies = [
 
 [[package]]
 name = "svgrtypes"
-version = "0.8.3"
+version = "0.27.0"
 dependencies = [
  "kurbo",
  "siphasher",
@@ -775,7 +775,7 @@ checksum = "b1d386ff53b415b7fe27b50bb44679e2cc4660272694b7b6f3326d8480823a94"
 
 [[package]]
 name = "usvgr"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "base64",
  "data-url",
@@ -793,7 +793,7 @@ dependencies = [
 
 [[package]]
 name = "usvgr-text-layout"
-version = "0.28.0"
+version = "0.27.0"
 dependencies = [
  "fontdb",
  "kurbo",
