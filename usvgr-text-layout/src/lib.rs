@@ -1533,7 +1533,19 @@ fn find_font_for_char(
             continue;
         }
 
-        log::warn!("Fallback from {} to {}.", base_face.family, face.family);
+        let base_family = base_face
+            .families
+            .iter()
+            .find(|f| f.1 == fontdb::Language::English_UnitedStates)
+            .unwrap_or(&base_face.families[0]);
+
+        let new_family = face
+            .families
+            .iter()
+            .find(|f| f.1 == fontdb::Language::English_UnitedStates)
+            .unwrap_or(&base_face.families[0]);
+
+        log::warn!("Fallback from {} to {}.", base_family.0, new_family.0);
         return fontdb.load_font(face.id);
     }
 
@@ -1989,7 +2001,7 @@ fn apply_length_adjust(chunk: &TextChunk, clusters: &mut [OutlinedCluster]) {
         if span.length_adjust == LengthAdjust::Spacing {
             let factor = if cluster_indexes.len() > 1 {
                 (target_width - width) / (cluster_indexes.len() - 1) as f64
-            }   else {
+            } else {
                 0 as f64
             };
 
