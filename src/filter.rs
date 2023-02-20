@@ -8,8 +8,9 @@ use rgb::FromSlice;
 use usvgr::{FuzzyZero, NodeExt, ScreenRect, Transform};
 
 use crate::{
+    cache::SvgrCache,
     render::{Canvas, RenderState},
-    ConvTransform, cache::SvgrCache,
+    ConvTransform,
 };
 
 macro_rules! into_svgfilters_image {
@@ -61,16 +62,18 @@ impl IntoSvgFilters<svgfilters::LightSource> for usvgr::filter::LightSource {
                     z: light.z,
                 }
             }
-            usvgr::filter::LightSource::SpotLight(ref light) => svgfilters::LightSource::SpotLight {
-                x: light.x,
-                y: light.y,
-                z: light.z,
-                points_at_x: light.points_at_x,
-                points_at_y: light.points_at_y,
-                points_at_z: light.points_at_z,
-                specular_exponent: light.specular_exponent.get(),
-                limiting_cone_angle: light.limiting_cone_angle,
-            },
+            usvgr::filter::LightSource::SpotLight(ref light) => {
+                svgfilters::LightSource::SpotLight {
+                    x: light.x,
+                    y: light.y,
+                    z: light.z,
+                    points_at_x: light.points_at_x,
+                    points_at_y: light.points_at_y,
+                    points_at_z: light.points_at_z,
+                    specular_exponent: light.specular_exponent.get(),
+                    limiting_cone_angle: light.limiting_cone_angle,
+                }
+            }
         }
     }
 }
@@ -175,7 +178,10 @@ struct Image {
 }
 
 impl Image {
-    fn from_image(image: tiny_skia::Pixmap, color_space: usvgr::filter::ColorInterpolation) -> Self {
+    fn from_image(
+        image: tiny_skia::Pixmap,
+        color_space: usvgr::filter::ColorInterpolation,
+    ) -> Self {
         let (w, h) = (image.width(), image.height());
         Image {
             image: Rc::new(image),
@@ -249,7 +255,7 @@ pub fn apply(
     fill_paint: Option<&tiny_skia::Pixmap>,
     stroke_paint: Option<&tiny_skia::Pixmap>,
     source: &mut tiny_skia::Pixmap,
-    cache: &mut SvgrCache
+    cache: &mut SvgrCache,
 ) {
     let res = {
         let inputs = FilterInputs {
@@ -284,7 +290,7 @@ fn _apply(
     bbox: Option<usvgr::Rect>,
     ts: &usvgr::Transform,
     tree: &usvgr::Tree,
-    cache: &mut SvgrCache
+    cache: &mut SvgrCache,
 ) -> Result<(Image, usvgr::ScreenRect), Error> {
     let mut results = Vec::new();
     let region = calc_region(filter, bbox, ts, inputs.source)?;
@@ -322,7 +328,9 @@ fn _apply(
                 let input = get_input(&fe.input, region, inputs, &results)?;
                 apply_tile(input, region)
             }
-            usvgr::filter::Kind::Image(ref fe) => apply_image(fe, region, subregion, tree, ts, cache),
+            usvgr::filter::Kind::Image(ref fe) => {
+                apply_image(fe, region, subregion, tree, ts, cache)
+            }
             usvgr::filter::Kind::ComponentTransfer(ref fe) => {
                 let input = get_input(&fe.input, region, inputs, &results)?;
                 apply_component_transfer(fe, cs, input)
@@ -610,14 +618,21 @@ fn get_input(
             convert_alpha(image.take()?)
         }
         usvgr::filter::Input::FillPaint => convert(inputs.fill_paint, region.translate_to(0, 0)),
-        usvgr::filter::Input::StrokePaint => convert(inputs.stroke_paint, region.translate_to(0, 0)),
+        usvgr::filter::Input::StrokePaint => {
+            convert(inputs.stroke_paint, region.translate_to(0, 0))
+        }
         usvgr::filter::Input::Reference(ref name) => {
             if let Some(v) = results.iter().rev().find(|v| v.name == *name) {
                 Ok(v.image.clone())
             } else {
                 // Technically unreachable.
                 log::warn!("Unknown filter primitive reference '{}'.", name);
-                get_input(&usvgr::filter::Input::SourceGraphic, region, inputs, results)
+                get_input(
+                    &usvgr::filter::Input::SourceGraphic,
+                    region,
+                    inputs,
+                    results,
+                )
             }
         }
     }
@@ -915,7 +930,7 @@ fn apply_image(
     subregion: usvgr::ScreenRect,
     tree: &usvgr::Tree,
     ts: &usvgr::Transform,
-    cache: &mut SvgrCache
+    cache: &mut SvgrCache,
 ) -> Result<Image, Error> {
     let mut pixmap = tiny_skia::Pixmap::try_create(region.width(), region.height())?;
     let mut canvas = Canvas::from(pixmap.as_mut());
@@ -931,7 +946,12 @@ fn apply_image(
                 aspect: fe.aspect,
             };
 
-            crate::image::raster_images::draw_raster(kind, view_box, fe.rendering_mode, &mut canvas);
+            crate::image::raster_images::draw_raster(
+                kind,
+                view_box,
+                fe.rendering_mode,
+                &mut canvas,
+            );
         }
         usvgr::filter::ImageKind::Use(ref node) => {
             let (sx, sy) = ts.get_scale();

@@ -3,27 +3,72 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 #![allow(missing_debug_implementations)]
+#![allow(missing_docs)]
 
 use std::collections::HashMap;
 
-use crate::geom::{FuzzyEq, Rect, Transform};
+pub use crate::geom::Transform;
+use crate::geom::{FuzzyEq, Rect};
 use crate::{converter, units};
 use crate::{EnableBackground, Opacity, Options, SharedPathData, Units};
 
-#[rustfmt::skip] mod names;
-mod parse;
+#[rustfmt::skip]mod names;
+#[allow(missing_docs)]
+pub mod parse;
 mod text;
 
-pub use names::{AId, EId};
+pub use names::{attributes_list, AId, EId};
+use quote::ToTokens;
 use strict_num::NonZeroPositiveF64;
-use svgrtypes::{Length, TransformOrigin};
-
 type Range = std::ops::Range<usize>;
 
+use ::svgrtypes::{Length, TransformOrigin};
+
+#[derive(Debug)]
+pub struct NestedSvgDocument<TNode = NestedNodeData> {
+    pub nodes: Vec<Option<TNode>>,
+}
+
+impl Default for NestedSvgDocument {
+    fn default() -> Self {
+        Self { nodes: vec![] }
+    }
+}
+
+impl NestedNodeData {
+    pub(crate) fn find_recursively(
+        &self,
+        predicate: &impl Fn(&NestedNodeData) -> bool,
+    ) -> Option<&NestedNodeData> {
+        for node in self.children.iter().flatten() {
+            if predicate(node) {
+                return Some(node);
+            }
+
+            if let Some(res) = node.find_recursively(predicate) {
+                return Some(res);
+            }
+        }
+
+        None
+    }
+}
+
+pub mod macro_prelude {
+    pub mod svgrtypes {
+        pub use svgrtypes::*;
+    }
+
+    pub use super::*;
+    pub use crate::{PathCommand, PathData};
+    pub use strict_num::NormalizedF64;
+}
+
+#[derive(Default)]
 pub struct Document {
-    nodes: Vec<NodeData>,
-    attrs: Vec<Attribute>,
-    links: HashMap<String, NodeId>,
+    pub nodes: Vec<NodeData>,
+    pub attrs: Vec<Attribute>,
+    pub links: HashMap<String, NodeId>,
 }
 
 impl Document {
@@ -121,25 +166,70 @@ impl std::fmt::Debug for Document {
 
 // TODO: use u32
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub struct NodeId(usize);
+pub struct NodeId(pub usize);
+
+impl quote::ToTokens for NodeId {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let value = self.0;
+
+        quote::quote! {
+            NodeId(#value)
+        }
+        .to_tokens(tokens)
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 struct AttributeId(usize);
 
-enum NodeKind {
+#[derive(Debug)]
+pub enum NodeKind {
     Root,
     Element { tag_name: EId, attributes: Range },
     Text(String),
 }
 
-struct NodeData {
+#[derive(Debug, PartialEq, Clone)]
+pub enum NestedNodeKind {
+    Root,
+    Element { tag_name: EId },
+    Text(String),
+}
+
+impl quote::ToTokens for NestedNodeKind {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        use quote::quote;
+
+        match self {
+            NestedNodeKind::Root => quote! { NestedNodeKind::Root },
+            NestedNodeKind::Element { tag_name } => {
+                quote! {
+                    NestedNodeKind::Element {
+                        tag_name: #tag_name,
+                    }
+                }
+            }
+            NestedNodeKind::Text(value) => quote! { NestedNodeKind::Text(#value.to_owned()) },
+        }
+        .to_tokens(tokens)
+    }
+}
+
+pub struct NodeData {
     parent: Option<NodeId>,
     next_sibling: Option<NodeId>,
     children: Option<(NodeId, NodeId)>,
     kind: NodeKind,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, PartialEq, Clone)]
+pub struct NestedNodeData {
+    pub kind: NestedNodeKind,
+    pub attrs: Vec<Option<Attribute>>,
+    pub children: Vec<Option<NestedNodeData>>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
 pub enum AttributeValue {
     None,
     CurrentColor,
@@ -161,7 +251,50 @@ pub enum AttributeValue {
     PaintOrder(svgrtypes::PaintOrder),
 }
 
-#[derive(Clone)]
+impl ToTokens for AttributeValue {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        use quote::quote;
+        match self {
+            AttributeValue::None => quote! { AttributeValue::None },
+            AttributeValue::CurrentColor => quote! { AttributeValue::CurrentColor },
+            AttributeValue::Angle(value) => quote! { AttributeValue::Angle(#value) },
+            AttributeValue::AspectRatio(value) => quote! { AttributeValue::AspectRatio(#value) },
+            AttributeValue::Color(value) => quote! { AttributeValue::Color(#value) },
+            AttributeValue::EnableBackground(value) => {
+                quote! { AttributeValue::EnableBackground(#value) }
+            }
+            AttributeValue::Length(value) => quote! { AttributeValue::Length(#value) },
+            AttributeValue::Link(value) => quote! { AttributeValue::Link(#value.to_owned()) },
+            AttributeValue::Number(value) => quote! { AttributeValue::Number(#value) },
+            AttributeValue::NumberList(value) => {
+                quote! { AttributeValue::NumberList(vec![#(#value),*]) }
+            }
+            AttributeValue::Opacity(value) => {
+                let native: f64 = value.get_finite().get();
+                quote! { AttributeValue::Opacity(NormalizedF64::new(#native).unwrap_or(NormalizedF64::new(1.0).unwrap())) }
+            }
+            AttributeValue::Paint(name, fallback) => {
+                let fallback = fallback
+                    .as_ref()
+                    .map(|fallback| quote! { Some(#fallback) })
+                    .unwrap_or(quote! { None });
+
+                quote! { AttributeValue::Paint(#name.to_owned(), #fallback) }
+            }
+            AttributeValue::Path(value) => quote! { AttributeValue::Path(#value) },
+            AttributeValue::String(value) => quote! { AttributeValue::String(#value.to_owned()) },
+            AttributeValue::Transform(value) => quote! { AttributeValue::Transform(#value) },
+            AttributeValue::TransformOrigin(value) => {
+                quote! { AttributeValue::TransformOrigin(#value) }
+            }
+            AttributeValue::ViewBox(value) => quote! { AttributeValue::ViewBox(#value) },
+            AttributeValue::PaintOrder(value) => quote! { AttributeValue::PaintOrder(#value) },
+        }
+        .to_tokens(tokens)
+    }
+}
+
+#[derive(Clone, PartialEq)]
 pub struct Attribute {
     pub name: AId,
     pub value: AttributeValue,

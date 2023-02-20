@@ -26,6 +26,38 @@ pub struct Length {
     pub unit: LengthUnit,
 }
 
+impl quote::ToTokens for LengthUnit {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            LengthUnit::None => quote::quote! {svgrtypes::LengthUnit::None},
+            LengthUnit::Em => quote::quote! {svgrtypes::LengthUnit::Em},
+            LengthUnit::Ex => quote::quote! {svgrtypes::LengthUnit::Ex},
+            LengthUnit::Px => quote::quote! {svgrtypes::LengthUnit::Px},
+            LengthUnit::In => quote::quote! {svgrtypes::LengthUnit::In},
+            LengthUnit::Cm => quote::quote! {svgrtypes::LengthUnit::Cm},
+            LengthUnit::Mm => quote::quote! {svgrtypes::LengthUnit::Mm},
+            LengthUnit::Pt => quote::quote! {svgrtypes::LengthUnit::Pt},
+            LengthUnit::Pc => quote::quote! {svgrtypes::LengthUnit::Pc},
+            LengthUnit::Percent => quote::quote! {svgrtypes::LengthUnit::Percent},
+        }
+        .to_tokens(tokens)
+    }
+}
+
+impl quote::ToTokens for Length {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let Self { number, unit } = self;
+
+        quote::quote! {
+            svgrtypes::Length {
+                number: #number,
+                unit: #unit,
+            }
+        }
+        .to_tokens(tokens)
+    }
+}
+
 impl Length {
     /// Constructs a new length.
     #[inline]

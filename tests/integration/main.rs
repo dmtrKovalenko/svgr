@@ -1,6 +1,7 @@
 use std::{
     collections::{hash_map, HashMap},
-    sync::Arc, ops::Deref,
+    ops::Deref,
+    sync::Arc,
 };
 
 use once_cell::sync::Lazy;
@@ -42,7 +43,10 @@ static GLOBAL_IMAGE_DATA: Lazy<Arc<HashMap<String, Arc<PreloadedImageData>>>> = 
 
     hash_map.insert("image.png".to_owned(), load_image("tests/images/image.png"));
     hash_map.insert("image.jpg".to_owned(), load_image("tests/images/image.jpg"));
-    hash_map.insert("image-63x61.png".to_owned(), load_image("tests/images/image-63x61.png"));
+    hash_map.insert(
+        "image-63x61.png".to_owned(),
+        load_image("tests/images/image-63x61.png"),
+    );
 
     Arc::new(hash_map)
 });

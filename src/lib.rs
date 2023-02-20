@@ -19,6 +19,7 @@ pub use usvgr_text_layout;
 
 use usvgr::NodeExt;
 
+mod cache;
 mod clip;
 #[cfg(feature = "filter")]
 mod filter;
@@ -27,10 +28,9 @@ mod mask;
 mod paint_server;
 mod path;
 mod render;
-mod cache;
 
-pub use cache::SvgrCache;
 pub use crate::render::trim_transparency;
+pub use cache::SvgrCache;
 
 trait OptionLog {
     fn log_none<F: FnOnce()>(self, f: F) -> Self;
@@ -133,7 +133,7 @@ pub fn render_node(
         size,
         &mut render::RenderState::Ok,
         &mut canvas,
-        cache
+        cache,
     );
     Some(())
 }

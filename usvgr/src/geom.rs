@@ -3,6 +3,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use crate::{Align, AspectRatio};
+use quote::ToTokens;
 use std::hash::{Hash, Hasher};
 use strict_num::ApproxEqUlps;
 
@@ -489,6 +490,17 @@ pub struct Rect {
     height: f64,
 }
 
+impl ToTokens for Rect {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let x = self.x;
+        let y = self.y;
+        let width = self.width;
+        let height = self.height;
+
+        tokens.extend(quote::quote! { svgrtypes::Rect::new(#x, #y, #width, #height).unwrap() });
+    }
+}
+
 impl Eq for Rect {}
 
 impl PartialEq for Rect {
@@ -899,6 +911,29 @@ pub struct Transform {
     pub d: f64,
     pub e: f64,
     pub f: f64,
+}
+
+impl quote::ToTokens for Transform {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let a = self.a;
+        let b = self.b;
+        let c = self.c;
+        let d = self.d;
+        let e = self.e;
+        let f = self.f;
+
+        quote::quote!(
+            Transform {
+                a: #a,
+                b: #b,
+                c: #c,
+                d: #d,
+                e: #e,
+                f: #f,
+            }
+        )
+        .to_tokens(tokens)
+    }
 }
 
 impl PartialEq for Transform {

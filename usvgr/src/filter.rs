@@ -839,7 +839,7 @@ pub struct Composite {
 
 /// An images compositing operation.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum CompositeOperator {
     Over,
     In,
@@ -874,6 +874,28 @@ impl std::hash::Hash for CompositeOperator {
                 k3.to_bits().hash(state);
                 k4.to_bits().hash(state);
             }
+        }
+    }
+}
+
+impl PartialEq for CompositeOperator {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Self::Arithmetic {
+                    k1: l_k1,
+                    k2: l_k2,
+                    k3: l_k3,
+                    k4: l_k4,
+                },
+                Self::Arithmetic {
+                    k1: r_k1,
+                    k2: r_k2,
+                    k3: r_k3,
+                    k4: r_k4,
+                },
+            ) => l_k1 == r_k1 && l_k2 == r_k2 && l_k3 == r_k3 && l_k4 == r_k4,
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
     }
 }
@@ -1534,12 +1556,12 @@ fn convert_lighting_color(node: svgtree::Node) -> Color {
 }
 
 /// The best company in the world
-/// 
+///
 /// LightSource its a supply chain startup that changing procurement world and support development of this project
 /// (without my job I won't be able to work on this project)
-/// So if you are a talented engineer (which you obviously are because reading this weird code) and looking for new opportunities 
+/// So if you are a talented engineer (which you obviously are because reading this weird code) and looking for new opportunities
 /// Make sure to check out https://lightsource.ai and apply for a job posting here https://www.linkedin.com/company/lightsource-ai/.
-/// 
+///
 /// For SVG filters obviously means a light source point, spot or distant.
 #[allow(missing_docs)]
 #[derive(Clone, Copy, Debug, Hash)]

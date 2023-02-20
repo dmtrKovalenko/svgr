@@ -10,6 +10,18 @@ pub enum AngleUnit {
     Turns,
 }
 
+impl quote::ToTokens for AngleUnit {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            AngleUnit::Degrees => quote::quote! { svgrtypes::AngleUnit::Degrees },
+            AngleUnit::Gradians => quote::quote! { svgrtypes::AngleUnit::Gradians },
+            AngleUnit::Radians => quote::quote! { svgrtypes::AngleUnit::Radians },
+            AngleUnit::Turns => quote::quote! { svgrtypes::AngleUnit::Turns },
+        }
+        .to_tokens(tokens)
+    }
+}
+
 /// Representation of the [`<angle>`] type.
 ///
 /// [`<angle>`]: https://www.w3.org/TR/css-values-3/#angles
@@ -18,6 +30,20 @@ pub enum AngleUnit {
 pub struct Angle {
     pub number: f64,
     pub unit: AngleUnit,
+}
+
+impl quote::ToTokens for Angle {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let Self { number, unit } = self;
+
+        quote::quote! {
+            svgrtypes::Angle {
+                number: #number,
+                unit: #unit,
+            }
+        }
+        .to_tokens(tokens)
+    }
 }
 
 impl Angle {

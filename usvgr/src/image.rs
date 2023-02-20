@@ -7,7 +7,7 @@ use svgrtypes::Length;
 
 use crate::geom::{Rect, Transform, ViewBox};
 use crate::svgtree::{self, AId};
-use crate::{converter, Options, ImageRendering, Node, NodeExt, NodeKind, OptionLog, Visibility};
+use crate::{converter, ImageRendering, Node, NodeExt, NodeKind, OptionLog, Options, Visibility};
 
 /// Use this struct to preload, decode and cache images for the upcoming rendering.
 #[derive(Debug, Hash)]
