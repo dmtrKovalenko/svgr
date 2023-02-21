@@ -51,3 +51,4 @@ memmap-fonts = ["usvgr-text-layout/memmap-fonts"]
 # When disabled, `image` elements with SVG data will still be rendered.
 # Adds around 200KiB to your binary.
 raster-images = ["gif", "jpeg-decoder", "png"]
+dump-svg = []
