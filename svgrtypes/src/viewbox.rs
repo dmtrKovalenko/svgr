@@ -41,6 +41,22 @@ pub struct ViewBox {
     pub h: f64,
 }
 
+impl quote::ToTokens for ViewBox {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let Self { x, y, w, h } = self;
+
+        quote::quote! {
+            svgrtypes::ViewBox {
+                x: #x,
+                y: #y,
+                w: #w,
+                h: #h,
+            }
+        }
+        .to_tokens(tokens)
+    }
+}
+
 impl ViewBox {
     /// Creates a new `ViewBox`.
     pub fn new(x: f64, y: f64, w: f64, h: f64) -> Self {

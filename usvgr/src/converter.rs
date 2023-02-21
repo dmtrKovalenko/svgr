@@ -10,7 +10,7 @@ use svgrtypes::{Length, LengthUnit as Unit};
 use crate::svgtree::{self, AId, EId};
 use crate::*;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct State<'a> {
     pub(crate) parent_clip_path: Option<svgtree::Node<'a>>,
     pub(crate) parent_marker: Option<svgtree::Node<'a>>,

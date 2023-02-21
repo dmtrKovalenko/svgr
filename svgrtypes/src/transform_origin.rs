@@ -32,6 +32,20 @@ pub struct TransformOrigin {
     pub y: crate::length::Length,
 }
 
+impl quote::ToTokens for TransformOrigin {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let Self { x, y } = self;
+
+        quote::quote! {
+            svgrtypes::TransformOrigin {
+                x: #x,
+                y: #y,
+            }
+        }
+        .to_tokens(tokens)
+    }
+}
+
 impl std::str::FromStr for TransformOrigin {
     type Err = Error;
 

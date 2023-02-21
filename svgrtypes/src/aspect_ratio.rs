@@ -18,6 +18,24 @@ pub enum Align {
     XMaxYMax,
 }
 
+impl quote::ToTokens for Align {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            Align::None => quote::quote! {Align::None},
+            Align::XMinYMin => quote::quote! {svgrtypes::Align::XMinYMin},
+            Align::XMidYMin => quote::quote! {svgrtypes::Align::XMidYMin},
+            Align::XMaxYMin => quote::quote! {svgrtypes::Align::XMaxYMin},
+            Align::XMinYMid => quote::quote! {svgrtypes::Align::XMinYMid},
+            Align::XMidYMid => quote::quote! {svgrtypes::Align::XMidYMid},
+            Align::XMaxYMid => quote::quote! {svgrtypes::Align::XMaxYMid},
+            Align::XMinYMax => quote::quote! {svgrtypes::Align::XMinYMax},
+            Align::XMidYMax => quote::quote! {svgrtypes::Align::XMidYMax},
+            Align::XMaxYMax => quote::quote! {svgrtypes::Align::XMaxYMax},
+        }
+        .to_tokens(tokens)
+    }
+}
+
 /// Representation of the [`preserveAspectRatio`] attribute.
 ///
 /// SVG 2 removed the `defer` keyword, but we still support it.
@@ -36,6 +54,25 @@ pub struct AspectRatio {
     /// - Set to `true` when `slice` value is present.
     /// - Set to `false` when `meet` value is present or value is not set at all.
     pub slice: bool,
+}
+
+impl quote::ToTokens for AspectRatio {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let Self {
+            defer,
+            slice,
+            align,
+        } = self;
+
+        quote::quote! {
+            svgrtypes::AspectRatio {
+                defer: #defer,
+                slice: #slice,
+                align: #align,
+            }
+        }
+        .to_tokens(tokens)
+    }
 }
 
 impl std::str::FromStr for AspectRatio {

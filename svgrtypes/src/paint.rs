@@ -19,6 +19,17 @@ pub enum PaintFallback {
     Color(Color),
 }
 
+impl quote::ToTokens for PaintFallback {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            PaintFallback::None => quote::quote! {svgrtypes::PaintFallback::None},
+            PaintFallback::CurrentColor => quote::quote! {svgrtypes::PaintFallback::CurrentColor},
+            PaintFallback::Color(color) => quote::quote! {svgrtypes::PaintFallback::Color(#color)},
+        }
+        .to_tokens(tokens)
+    }
+}
+
 /// Representation of the [`<paint>`] type.
 ///
 /// Doesn't own the data. Use only for parsing.

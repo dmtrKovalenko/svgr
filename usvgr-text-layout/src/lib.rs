@@ -635,7 +635,7 @@ type FontsCacheInner = HashMap<Font, Rc<ResolvedFont>>;
 
 #[derive(Debug)]
 /// Fonts cache. Contains resolved font files from the `fontdb` database.
-/// Have no capacity option because there is no sense in clearing fonts cache, at least for fframes 
+/// Have no capacity option because there is no sense in clearing fonts cache, at least for fframes
 /// If font is used within one frame there is a high chance it will be used at some future frame as well.
 pub struct FontsCache(FontsCacheInner);
 

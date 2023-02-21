@@ -2,14 +2,19 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::rc::Rc;
 use std::str::FromStr;
+use std::{collections::HashMap, ops::Range};
 
 use super::{AId, Attribute, AttributeValue, Document, EId, Node, NodeData, NodeId, NodeKind};
-use crate::{EnableBackground, Error, Opacity, PathData, Rect};
+use crate::svgtree::NestedNodeKind;
+use crate::{
+    svgtree::{NestedNodeData, NestedSvgDocument},
+    EnableBackground, Error, Opacity, PathData, Rect,
+};
 
-const SVG_NS: &str = "http://www.w3.org/2000/svg";
+pub const SVG_NS: &str = "http://www.w3.org/2000/svg";
 const XLINK_NS: &str = "http://www.w3.org/1999/xlink";
 const XML_NAMESPACE_NS: &str = "http://www.w3.org/XML/1998/namespace";
 
@@ -57,6 +62,64 @@ impl Document {
             }
         }
     }
+
+    /// Parses and appends or replaces an attribute
+    fn insert_attribute(
+        &mut self,
+        aid: AId,
+        value: &str,
+        attrs_start_idx: usize,
+        parent_id: NodeId,
+        tag_name: EId,
+    ) {
+        // Check that attribute already exists.
+        let idx = &self.attrs[attrs_start_idx..]
+            .iter_mut()
+            .position(|a| a.name == aid);
+
+        // Append an attribute as usual.
+        let added = append_attribute(parent_id, tag_name, aid, value, self);
+
+        // Check that attribute was actually added, because it could be skipped.
+        if added {
+            if let Some(idx) = idx {
+                // Swap the last attribute with an existing one.
+                let last_idx = self.attrs.len() - 1;
+                self.attrs.swap(attrs_start_idx + idx, last_idx);
+                // Remove last.
+                self.attrs.pop();
+            }
+        }
+    }
+}
+
+fn prepare_raw_svgtree(doc: &mut Document) -> Result<(), Error> {
+    // Check that the root element is `svg`.
+    match doc.root().first_element_child() {
+        Some(child) => {
+            if child.tag_name() != Some(EId::Svg) {
+                return Err(roxmltree::Error::NoRootNode.into());
+            }
+        }
+        None => return Err(roxmltree::Error::NoRootNode.into()),
+    }
+
+    // Collect all elements with `id` attribute.
+    let mut links = HashMap::new();
+    for node in doc.descendants() {
+        if let Some(id) = node.attribute::<&str>(AId::Id) {
+            links.insert(id.to_string(), node.id);
+        }
+    }
+
+    doc.links = links;
+    fix_recursive_patterns(doc);
+    fix_recursive_links(EId::ClipPath, AId::ClipPath, doc);
+    fix_recursive_links(EId::Mask, AId::Mask, doc);
+    fix_recursive_links(EId::Filter, AId::Filter, doc);
+    fix_recursive_fe_image(doc);
+
+    Ok(())
 }
 
 fn parse(xml: &roxmltree::Document) -> Result<Document, Error> {
@@ -86,32 +149,204 @@ fn parse(xml: &roxmltree::Document) -> Result<Document, Error> {
         &mut doc,
     )?;
 
-    // Check that the root element is `svg`.
-    match doc.root().first_element_child() {
-        Some(child) => {
-            if child.tag_name() != Some(EId::Svg) {
-                return Err(roxmltree::Error::NoRootNode.into());
-            }
-        }
-        None => return Err(roxmltree::Error::NoRootNode.into()),
-    }
-
-    // Collect all elements with `id` attribute.
-    let mut links = HashMap::new();
-    for node in doc.descendants() {
-        if let Some(id) = node.attribute::<&str>(AId::Id) {
-            links.insert(id.to_string(), node.id);
-        }
-    }
-    doc.links = links;
-
-    fix_recursive_patterns(&mut doc);
-    fix_recursive_links(EId::ClipPath, AId::ClipPath, &mut doc);
-    fix_recursive_links(EId::Mask, AId::Mask, &mut doc);
-    fix_recursive_links(EId::Filter, AId::Filter, &mut doc);
-    fix_recursive_fe_image(&mut doc);
+    prepare_raw_svgtree(&mut doc)?;
 
     Ok(doc)
+}
+
+impl TryFrom<NestedSvgDocument> for Document {
+    type Error = Error;
+
+    fn try_from(nested_doc: NestedSvgDocument) -> Result<Self, Self::Error> {
+        let mut doc = Document {
+            nodes: Vec::new(),
+            attrs: Vec::new(),
+            links: HashMap::new(),
+        };
+
+        // Add a root node.
+        doc.nodes.push(NodeData {
+            parent: None,
+            next_sibling: None,
+            children: None,
+            kind: NodeKind::Root,
+        });
+
+        let parent_id = doc.root().id;
+        flatten_nested_svg_tree(&mut doc, &nested_doc, parent_id, &nested_doc.nodes);
+
+        prepare_raw_svgtree(&mut doc)?;
+        Ok(doc)
+    }
+}
+
+fn flatten_nested_svg_tree(
+    doc: &mut Document,
+    nested_doc: &NestedSvgDocument,
+    parent_id: NodeId,
+    nodes: &[Option<NestedNodeData>],
+) {
+    for node in nodes.iter().flatten() {
+        match &node.kind {
+            NestedNodeKind::Element { tag_name, .. } => {
+                append_nested_element(doc, nested_doc, node, node, parent_id, *tag_name, false);
+            }
+            NestedNodeKind::Text(value) => {
+                doc.append(parent_id, NodeKind::Text(value.to_string()));
+            }
+            NestedNodeKind::Root => {
+                let parent_id = doc.append(parent_id, NodeKind::Root);
+                flatten_nested_svg_tree(doc, nested_doc, parent_id, &node.children)
+            }
+        };
+    }
+}
+
+fn append_nested_element(
+    doc: &mut Document,
+    nested_doc: &NestedSvgDocument,
+    node: &NestedNodeData,
+    use_origin: &NestedNodeData,
+    parent_id: NodeId,
+    tag_name: EId,
+    ignore_ids: bool,
+) {
+    let attrs_start_idx = doc.attrs.len();
+    for attr in node.attrs.iter().flatten() {
+        if let (AId::Style, AttributeValue::String(style)) = (&attr.name, &attr.value) {
+            for declaration in simplecss::DeclarationTokenizer::from(style.as_str()) {
+                if let Some(aid) = AId::from_str(declaration.name) {
+                    // Parse only the presentation attributes.
+                    if aid.is_presentation() {
+                        doc.insert_attribute(
+                            aid,
+                            declaration.value,
+                            attrs_start_idx,
+                            parent_id,
+                            tag_name,
+                        );
+                    }
+                }
+            }
+
+            continue;
+        }
+
+        if attr.name == AId::Id && ignore_ids {
+            continue;
+        }
+
+        doc.attrs.push(attr.clone());
+    }
+
+    let attributes = Range {
+        start: attrs_start_idx,
+        end: doc.attrs.len(),
+    };
+
+    if tag_name == EId::Use {
+        let attrs_clone = attributes.clone();
+        let node_id = doc.append(
+            parent_id,
+            NodeKind::Element {
+                tag_name,
+                attributes,
+            },
+        );
+
+        resolve_nested_use_element(doc, nested_doc, node_id, node, use_origin, attrs_clone);
+    } else {
+        let node_id = doc.append(
+            parent_id,
+            NodeKind::Element {
+                tag_name,
+                attributes,
+            },
+        );
+
+        flatten_nested_svg_tree(doc, nested_doc, node_id, &node.children)
+    }
+}
+fn resolve_linked_node<'a>(
+    href: &Attribute,
+    nested_doc: &'a NestedSvgDocument,
+) -> Option<&'a NestedNodeData> {
+    let link_id = match &href.value {
+        AttributeValue::Link(id) => id.as_str(),
+        _ => return None,
+    };
+
+    let link_node = nested_doc
+        .nodes
+        .first()?
+        .as_ref()?
+        .find_recursively(&|node| {
+            node.attrs.iter().flatten().any(|attr| {
+                attr.name == AId::Id && attr.value == AttributeValue::String(link_id.to_string())
+            })
+        })?;
+
+    Some(link_node)
+}
+
+fn resolve_nested_use_element(
+    doc: &mut Document,
+    nested_doc: &NestedSvgDocument,
+    parent_id: NodeId,
+    parent_node: &NestedNodeData,
+    origin: &NestedNodeData,
+    attributes_range: Range<usize>,
+) -> Option<()> {
+    let href = doc.attrs[attributes_range]
+        .iter()
+        .find(|attr| attr.name == AId::Href)?;
+    let link_node = resolve_linked_node(href, nested_doc)?;
+
+    // prevents stack overflow for recursive use elements
+    if link_node == parent_node || link_node == origin {
+        return None;
+    };
+
+    let is_recursive = link_node
+        .find_recursively(&|node| match node.kind {
+            NestedNodeKind::Element { tag_name } if tag_name == EId::Use => {
+                let link2 = node
+                    .attrs
+                    .iter()
+                    .flatten()
+                    .find(|attr| attr.name == AId::Href);
+
+                if let Some(href2) = link2 {
+                    if let Some(link_node2) = resolve_linked_node(href2, nested_doc) {
+                        return link_node2 == parent_node || link_node2 == link_node;
+                    }
+                }
+
+                false
+            }
+            _ => false,
+        })
+        .is_some();
+
+    if is_recursive {
+        return None;
+    }
+
+    match link_node.kind {
+        NestedNodeKind::Element { tag_name, .. } => {
+            append_nested_element(
+                doc,
+                nested_doc,
+                link_node,
+                parent_node,
+                parent_id,
+                tag_name,
+                true,
+            );
+            Some(())
+        }
+        _ => None,
+    }
 }
 
 pub(super) fn parse_tag_name(node: roxmltree::Node) -> Option<EId> {
@@ -225,27 +460,6 @@ pub(super) fn parse_svg_element(
         append_attribute(parent_id, tag_name, aid, attr.value(), doc);
     }
 
-    let mut insert_attribute = |aid, value: &str| {
-        // Check that attribute already exists.
-        let idx = doc.attrs[attrs_start_idx..]
-            .iter_mut()
-            .position(|a| a.name == aid);
-
-        // Append an attribute as usual.
-        let added = append_attribute(parent_id, tag_name, aid, value, doc);
-
-        // Check that attribute was actually added, because it could be skipped.
-        if added {
-            if let Some(idx) = idx {
-                // Swap the last attribute with an existing one.
-                let last_idx = doc.attrs.len() - 1;
-                doc.attrs.swap(attrs_start_idx + idx, last_idx);
-                // Remove last.
-                doc.attrs.pop();
-            }
-        }
-    };
-
     // Apply CSS.
     for rule in &style_sheet.rules {
         if rule.selector.matches(&XmlNode(xml_node)) {
@@ -254,12 +468,36 @@ pub(super) fn parse_svg_element(
                 if let Some(aid) = AId::from_str(declaration.name) {
                     // Parse only the presentation attributes.
                     if aid.is_presentation() {
-                        insert_attribute(aid, declaration.value);
+                        doc.insert_attribute(
+                            aid,
+                            declaration.value,
+                            attrs_start_idx,
+                            parent_id,
+                            tag_name,
+                        );
                     }
                 } else if declaration.name == "marker" {
-                    insert_attribute(AId::MarkerStart, declaration.value);
-                    insert_attribute(AId::MarkerMid, declaration.value);
-                    insert_attribute(AId::MarkerEnd, declaration.value);
+                    doc.insert_attribute(
+                        AId::MarkerStart,
+                        declaration.value,
+                        attrs_start_idx,
+                        parent_id,
+                        tag_name,
+                    );
+                    doc.insert_attribute(
+                        AId::MarkerMid,
+                        declaration.value,
+                        attrs_start_idx,
+                        parent_id,
+                        tag_name,
+                    );
+                    doc.insert_attribute(
+                        AId::MarkerEnd,
+                        declaration.value,
+                        attrs_start_idx,
+                        parent_id,
+                        tag_name,
+                    );
                 }
             }
         }
@@ -272,7 +510,13 @@ pub(super) fn parse_svg_element(
             if let Some(aid) = AId::from_str(declaration.name) {
                 // Parse only the presentation attributes.
                 if aid.is_presentation() {
-                    insert_attribute(aid, declaration.value);
+                    doc.insert_attribute(
+                        aid,
+                        declaration.value,
+                        attrs_start_idx,
+                        parent_id,
+                        tag_name,
+                    );
                 }
             }
         }
@@ -322,7 +566,7 @@ fn append_attribute(
     true
 }
 
-fn parse_svg_attribute(tag_name: EId, aid: AId, value: &str) -> Option<AttributeValue> {
+pub fn parse_svg_attribute(tag_name: EId, aid: AId, value: &str) -> Option<AttributeValue> {
     Some(match aid {
         AId::Href => {
             // `href` can contain base64 data and we do store it as is.

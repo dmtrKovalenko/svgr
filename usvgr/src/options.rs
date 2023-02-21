@@ -96,7 +96,7 @@ pub struct Options<'a> {
     ///
     /// Default: GeometricPrecision
     pub shape_rendering: ShapeRendering,
- /// Specifies the default text rendering method.
+    /// Specifies the default text rendering method.
     ///
     /// Will be used when an SVG element's `text-rendering` property is set to `auto`.
     ///

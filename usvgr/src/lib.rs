@@ -108,16 +108,19 @@ mod paint_server;
 mod pathdata;
 mod shapes;
 mod style;
-mod svgtree;
+pub mod svgtree;
 mod switch;
 mod text;
 mod units;
 mod use_node;
 pub mod utils;
 
+use std::convert::TryInto;
 use std::hash::Hash;
 use std::rc::Rc;
 
+use proc_macro2::TokenStream;
+use quote::ToTokens;
 pub use strict_num::{ApproxEq, ApproxEqUlps, NonZeroPositiveF64, NormalizedF64, PositiveF64};
 pub use svgrtypes::{Align, AspectRatio};
 
@@ -132,6 +135,7 @@ pub use crate::options::*;
 pub use crate::paint_server::*;
 pub use crate::pathdata::*;
 pub use crate::style::*;
+use crate::svgtree::NestedSvgDocument;
 pub use crate::text::*;
 
 trait OptionLog {
@@ -468,9 +472,19 @@ impl Default for Path {
 /// An `enable-background`.
 ///
 /// Contains only the `new [ <x> <y> <width> <height> ]` value.
-#[derive(Clone, Hash, Copy, Debug)]
+#[derive(Clone, Hash, Copy, Debug, PartialEq)]
 #[allow(missing_docs)]
 pub struct EnableBackground(pub Option<Rect>);
+
+impl ToTokens for EnableBackground {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self.0 {
+            Some(value) => quote::quote! {Some(#value)},
+            None => quote::quote! {None},
+        }
+        .to_tokens(tokens);
+    }
+}
 
 /// A group container.
 ///
@@ -569,7 +583,7 @@ impl std::hash::Hash for HashedNode<'_> {
         match &*self.0.borrow() {
             NodeKind::Group(group) => group.hash(state),
             NodeKind::Path(path) => path.hash(state),
-            NodeKind::Image(img) => img.hash(state), 
+            NodeKind::Image(img) => img.hash(state),
             NodeKind::Text(text) => text.hash(state),
         }
 
@@ -636,10 +650,15 @@ impl Tree {
         Self::from_svgtree(doc, opt)
     }
 
+    /// Parses `Tree` from `svgtree::NestedSvgDocument`.
+    pub fn from_nested_svgtree(doc: NestedSvgDocument, opt: &Options) -> Result<Self, Error> {
+        Self::from_svgtree(doc.try_into()?, opt)
+    }
+
     /// Parses `Tree` from the `svgtree::Document`.
     ///
     /// An empty `Tree` will be returned on any error.
-    fn from_svgtree(doc: svgtree::Document, opt: &Options) -> Result<Self, Error> {
+    pub fn from_svgtree(doc: svgtree::Document, opt: &Options) -> Result<Self, Error> {
         crate::converter::convert_doc(&doc, opt)
     }
 

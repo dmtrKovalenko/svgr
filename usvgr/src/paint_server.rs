@@ -2,9 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use svgrtypes::{Length, LengthUnit as Unit};
 use std::rc::Rc;
 use strict_num::PositiveF64;
+use svgrtypes::{Length, LengthUnit as Unit};
 
 use crate::geom::{FuzzyEq, FuzzyZero, IsValidLength, Rect, Transform, ViewBox};
 use crate::svgtree::{self, AId, EId};
@@ -73,17 +73,16 @@ pub struct LinearGradient {
     pub base: BaseGradient,
 }
 
-impl std::hash::Hash for LinearGradient { 
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) { 
-        self.id.hash(state); 
+impl std::hash::Hash for LinearGradient {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
         self.x1.to_bits().hash(state);
         self.y1.to_bits().hash(state);
         self.x2.to_bits().hash(state);
         self.y2.to_bits().hash(state);
         self.base.hash(state);
-    } 
+    }
 }
-
 
 impl std::ops::Deref for LinearGradient {
     type Target = BaseGradient;
@@ -115,16 +114,16 @@ pub struct RadialGradient {
     pub base: BaseGradient,
 }
 
-impl std::hash::Hash for RadialGradient { 
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) { 
-        self.id.hash(state); 
+impl std::hash::Hash for RadialGradient {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
         self.cx.to_bits().hash(state);
         self.cy.to_bits().hash(state);
         self.r.hash(state);
         self.fx.to_bits().hash(state);
         self.fy.to_bits().hash(state);
         self.base.hash(state);
-    } 
+    }
 }
 
 impl std::ops::Deref for RadialGradient {
@@ -200,16 +199,16 @@ pub struct Pattern {
     pub root: Node,
 }
 
-impl std::hash::Hash for Pattern { 
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) { 
+impl std::hash::Hash for Pattern {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         // hash over all keys except root because we already capturing unique id hash
-        self.id.hash(state); 
+        self.id.hash(state);
         self.units.hash(state);
         self.content_units.hash(state);
         self.transform.hash(state);
         self.rect.hash(state);
         self.view_box.hash(state);
-    }  
+    }
 }
 
 pub(crate) enum ServerOrColor {

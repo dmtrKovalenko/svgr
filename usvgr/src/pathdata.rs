@@ -5,6 +5,7 @@
 use std::{hash::Hash, rc::Rc};
 
 use kurbo::{ParamCurve, ParamCurveArclen, ParamCurveExtrema};
+use quote::ToTokens;
 
 use crate::{FuzzyZero, PathBbox, Rect, Transform};
 
@@ -16,6 +17,18 @@ pub enum PathCommand {
     LineTo,
     CurveTo,
     ClosePath,
+}
+
+impl ToTokens for PathCommand {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            PathCommand::MoveTo => quote::quote! { PathCommand::MoveTo },
+            PathCommand::LineTo => quote::quote! { PathCommand::LineTo },
+            PathCommand::CurveTo => quote::quote! { PathCommand::CurveTo },
+            PathCommand::ClosePath => quote::quote! { PathCommand::ClosePath },
+        }
+        .to_tokens(tokens)
+    }
 }
 
 /// A path's absolute segment.
@@ -49,8 +62,24 @@ pub enum PathSegment {
 /// All segments are in absolute coordinates.
 #[derive(Clone, Default, Debug)]
 pub struct PathData {
-    commands: Vec<PathCommand>,
-    points: Vec<f64>,
+    /// Set of commands for the path aligned with points
+    pub commands: Vec<PathCommand>,
+    /// Set of points for hte path aligned with commands
+    pub points: Vec<f64>,
+}
+
+impl ToTokens for PathData {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let Self { commands, points } = self;
+
+        quote::quote! {
+            std::rc::Rc::new(PathData {
+                commands: vec![#(#commands),*],
+                points: vec![#(#points),*],
+            })
+        }
+        .to_tokens(tokens)
+    }
 }
 
 impl Eq for PathData {}

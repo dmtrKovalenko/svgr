@@ -1,10 +1,9 @@
 use std::rc::Rc;
-
 use usvgr::NodeExt;
 
 fn main() {
     let size = usvgr::Size::new(200.0, 200.0).unwrap();
-    let mut rtree = usvgr::Tree {
+    let rtree = usvgr::Tree {
         size,
         view_box: usvgr::ViewBox {
             rect: size.to_rect(0.0, 0.0),
@@ -63,7 +62,7 @@ fn main() {
         usvgr::FitTo::Original,
         tiny_skia::Transform::default(),
         pixmap.as_mut(),
-        &mut svgr::SvgrCache::none()
+        &mut svgr::SvgrCache::none(),
     )
     .unwrap();
     pixmap.save_png("out.png").unwrap();

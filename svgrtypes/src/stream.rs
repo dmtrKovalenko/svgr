@@ -282,7 +282,6 @@ impl<'a> Stream<'a> {
         let start = self.pos;
         self.skip_bytes(|_, c| c.is_ident());
         self.slice_back(start)
-
     }
 
     pub fn take_till_space(&mut self) -> &'a str {

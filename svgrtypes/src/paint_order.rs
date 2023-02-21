@@ -11,6 +11,17 @@ pub enum PaintOrderKind {
     Markers,
 }
 
+impl quote::ToTokens for PaintOrderKind {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            PaintOrderKind::Fill => quote::quote! { svgrtypes::PaintOrderKind::Fill },
+            PaintOrderKind::Stroke => quote::quote! { svgrtypes::PaintOrderKind::Stroke },
+            PaintOrderKind::Markers => quote::quote! { svgrtypes::PaintOrderKind::Markers },
+        }
+        .to_tokens(tokens)
+    }
+}
+
 /// Representation of the [`paint-order`] property.
 ///
 /// [`paint-order`]: https://www.w3.org/TR/SVG2/painting.html#PaintOrder
@@ -20,6 +31,19 @@ pub struct PaintOrder {
     ///
     /// Guarantee to not have duplicates.
     pub order: [PaintOrderKind; 3],
+}
+
+impl quote::ToTokens for PaintOrder {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let [first, second, third] = self.order;
+
+        quote::quote! {
+            svgrtypes::PaintOrder {
+                order: [#first, #second, #third],
+            }
+        }
+        .to_tokens(tokens)
+    }
 }
 
 impl Default for PaintOrder {
