@@ -24,9 +24,16 @@ type Range = std::ops::Range<usize>;
 
 use ::svgrtypes::{Length, TransformOrigin};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct NestedSvgDocument<TNode = NestedNodeData> {
     pub nodes: Vec<Option<TNode>>,
+}
+
+#[allow(clippy::derivable_impls)]
+impl Default for NestedSvgDocument {
+    fn default() -> Self {
+        Self { nodes: vec![] }
+    }
 }
 
 impl NestedNodeData {
