@@ -1,6 +1,6 @@
 [package]
 name = "usvgr"
-version = "0.28.0"
+version = "0.28.1"
 authors = ["Yevhenii Reizner <razrfalcon@gmail.com>"]
 keywords = ["svg"]
 license = "MPL-2.0"
@@ -25,6 +25,6 @@ roxmltree = "0.15" # XML parsing
 simplecss = "0.2" # CSS parsing and selector
 siphasher = "0.3" # perfect hash implementation
 strict-num = "0.1"
-svgrtypes =  { path = "../svgrtypes", version = "0.28.0" }
+svgrtypes =  { path = "../svgrtypes", version = "0.28.1" }
 quote = "1"
 proc-macro2 = "1"
