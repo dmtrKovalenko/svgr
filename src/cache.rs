@@ -4,9 +4,9 @@ use std::{
 };
 
 use crate::{render::Canvas, trim_transparency};
+use lru::LruCache;
 use tiny_skia::PixmapPaint;
 use usvgr::HashedNode;
-use usvgr_text_layout::lru::LruCache;
 
 /// Defines rendering LRU cache. Each individual node and group will be cached separately.
 /// Make sure that in most cases it will require saving of the whole canvas which may lead to significant memory usage.

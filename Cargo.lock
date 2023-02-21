@@ -650,6 +650,7 @@ dependencies = [
  "image",
  "jpeg-decoder",
  "log",
+ "lru",
  "once_cell",
  "pico-args",
  "png",
