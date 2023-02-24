@@ -474,6 +474,11 @@ impl<'a> Node<'a> {
         Rect::new(vb.x, vb.y, vb.w, vb.h)
     }
 
+    pub fn parse_viewbox(&self) -> Option<Rect> {
+        let vb: svgrtypes::ViewBox = self.attribute(AId::ViewBox)?;
+        Rect::new(vb.x, vb.y, vb.w, vb.h)
+    }
+
     pub fn text(&self) -> &'a str {
         match self.d.kind {
             NodeKind::Element { .. } => match self.first_child() {
