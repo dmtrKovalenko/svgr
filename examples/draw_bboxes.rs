@@ -32,7 +32,7 @@ fn main() {
     fontdb.load_system_fonts();
 
     let svg_data = std::fs::read(&args[1]).unwrap();
-    let mut rtree = usvgr::Tree::from_data(&svg_data, &opt).unwrap();
+    let rtree = usvgr::Tree::from_data(&svg_data, &opt).unwrap();
 
     let mut bboxes = Vec::new();
     let mut text_bboxes = Vec::new();

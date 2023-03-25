@@ -1,11 +1,6 @@
-use std::{
-    collections::{hash_map, HashMap},
-    ops::Deref,
-    sync::Arc,
-};
-
 use once_cell::sync::Lazy;
 use rgb::FromSlice;
+use std::{collections::HashMap, sync::Arc};
 use svgr::SvgrCache;
 use usvgr::PreloadedImageData;
 use usvgr_text_layout::{fontdb, TreeTextToPath};
