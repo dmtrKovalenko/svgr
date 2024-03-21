@@ -24,9 +24,8 @@ pub(crate) mod raster_images {
         rendering_mode: usvgr::ImageRendering,
         canvas: &mut Canvas,
     ) -> Option<()> {
-        let mut img_bytes = img.data.clone();
-        let pixmap =
-            tiny_skia::PixmapMut::from_bytes(img_bytes.as_mut_slice(), img.width, img.height)?;
+        let img_bytes = img.data.clone();
+        let pixmap = tiny_skia::PixmapRef::from_bytes(&img_bytes, img.width, img.height)?;
 
         let mut filter = tiny_skia::FilterQuality::Bicubic;
         if rendering_mode == usvgr::ImageRendering::OptimizeSpeed {
@@ -50,8 +49,7 @@ pub(crate) mod raster_images {
             r.y() as f32,
         );
 
-        let pattern =
-            tiny_skia::Pattern::new(pixmap.as_ref(), tiny_skia::SpreadMode::Pad, filter, 1.0, ts);
+        let pattern = tiny_skia::Pattern::new(pixmap, tiny_skia::SpreadMode::Pad, filter, 1.0, ts);
         let mut paint = tiny_skia::Paint::default();
         paint.shader = pattern;
 

@@ -25,12 +25,12 @@ fn load_image(path: &str) -> Arc<PreloadedImageData> {
     let image_data = std::fs::read(path).unwrap();
     let png_image = image::load_from_memory(image_data.as_slice()).unwrap();
 
-    PreloadedImageData::new(
+    Arc::new(PreloadedImageData::new(
         "png".to_owned(),
         png_image.width(),
         png_image.height(),
-        png_image.to_rgba8().into_raw(),
-    )
+        &png_image.to_rgba8().into_raw(),
+    ))
 }
 
 static GLOBAL_IMAGE_DATA: Lazy<Arc<HashMap<String, Arc<PreloadedImageData>>>> = Lazy::new(|| {

@@ -414,7 +414,7 @@ pub enum AId {
     Z,
 }
 
-impl ToTokens for AId { 
+impl ToTokens for AId {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
             AId::AlignmentBaseline => quote! {AId::AlignmentBaseline},
@@ -898,12 +898,10 @@ struct Map<V: 'static> {
 
 impl<V: PartialEq> Map<V> {
     fn get(&self, key: &str) -> Option<&V> {
-        use std::borrow::Borrow;
-
         let hash = hash(key, self.key);
-        let index = get_index(hash, &*self.disps, self.entries.len());
+        let index = get_index(hash, self.disps, self.entries.len());
         let entry = &self.entries[index as usize];
-        let b = entry.0.borrow();
+        let b = entry.0;
         if b == key {
             Some(&entry.1)
         } else {

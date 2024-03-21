@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use svgr::SvgrCache;
 use usvgr::PreloadedImageData;
 
@@ -9,12 +11,12 @@ fn main() {
 
     let preloaded_data = std::collections::HashMap::from([(
         "ferris_image".to_owned(),
-        PreloadedImageData::new(
+        Arc::new(PreloadedImageData::new(
             "png".to_string(),
             ferris_image.width(),
             ferris_image.height(),
-            ferris_image.to_rgba8().into_raw(),
-        ),
+            &ferris_image.to_rgba8().into_raw(),
+        )),
     )]);
 
     opt.image_data = Some(&preloaded_data);

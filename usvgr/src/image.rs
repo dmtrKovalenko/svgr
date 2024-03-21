@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 use svgrtypes::Length;
 
@@ -13,7 +14,9 @@ use crate::{converter, ImageRendering, Node, NodeExt, NodeKind, OptionLog, Optio
 #[derive(Debug, Hash)]
 pub struct PreloadedImageData {
     /// The decoded image data. Make sure that if you submit the data directly it must be blended for semi transparent colors.
-    pub data: Vec<u8>,
+    /// Either a static slice or an owned vector. Povide a static slice that is pre-blended in case
+    /// of static resource linking for rendering.
+    pub data: Cow<'static, [u8]>,
     /// The width of image in pixels
     pub width: u32,
     /// The height of image in pixels
@@ -23,15 +26,15 @@ pub struct PreloadedImageData {
 }
 
 impl PreloadedImageData {
-    /// Creates a new `PreloadedImageData` from the given rgba8 buffer and blends all the semi transparent colors.
-    pub fn new(mime: String, width: u32, height: u32, rgba_data: Vec<u8>) -> Arc<Self> {
-        let mut data = vec![0; rgba_data.len()];
+    /// Converts raw rgba pixmap source to the rgba source with blended semi transparent colors.
+    pub fn blend_rgba_slice(rgba_slice: &[u8]) -> Vec<u8> {
+        let mut data = vec![0; rgba_slice.len()];
 
-        for i in (0..rgba_data.len()).step_by(4) {
-            let r = rgba_data[i];
-            let g = rgba_data[i + 1];
-            let b = rgba_data[i + 2];
-            let a = rgba_data[i + 3];
+        for i in (0..rgba_slice.len()).step_by(4) {
+            let r = rgba_slice[i];
+            let g = rgba_slice[i + 1];
+            let b = rgba_slice[i + 2];
+            let a = rgba_slice[i + 3];
 
             let alpha = a as f32 / 255.0;
 
@@ -41,8 +44,31 @@ impl PreloadedImageData {
             data[i + 3] = a;
         }
 
+        data
+    }
+
+    /// Creates a new `PreloadedImageData` from the given rgba8 buffer and blends all the semi transparent colors.
+    pub fn new(mime: String, width: u32, height: u32, rgba_data: &[u8]) -> Self {
+        Self {
+            data: Cow::Owned(Self::blend_rgba_slice(rgba_data)),
+            width,
+            mime,
+            height,
+        }
+    }
+
+    /// Creates a new `PreloadedImageData` from the given rgba8 buffer
+    /// which is meant to be already blended for semi transparent colors.
+    ///
+    /// You can use `PreloadedImageData::blend_rgba_slice` to blend the colors in advance.
+    pub fn new_blended(
+        mime: String,
+        width: u32,
+        height: u32,
+        rgba_data: &'static [u8],
+    ) -> Arc<Self> {
         Arc::new(Self {
-            data,
+            data: Cow::Borrowed(rgba_data),
             width,
             mime,
             height,
