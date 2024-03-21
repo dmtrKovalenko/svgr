@@ -645,7 +645,9 @@ dependencies = [
 
 [[package]]
 name = "svgfilters"
-version = "0.28.7"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "639abcebc15fdc2df179f37d6f5463d660c1c79cd552c12343a4600827a04bce"
 dependencies = [
  "float-cmp",
  "rgb",
