@@ -1,6 +1,6 @@
 [package]
 name = "usvgr-text-layout"
-version = "0.28.7"
+version = "0.28.9"
 authors = ["Yevhenii Reizner <razrfalcon@gmail.com>"]
 keywords = ["svg"]
 license = "MPL-2.0"
@@ -19,7 +19,7 @@ rustybuzz = "0.6.0"
 unicode-bidi = "0.3"
 unicode-script = "0.5"
 unicode-vo = "0.1"
-usvgr = { path = "../usvgr", version = "0.28.7" }
+usvgr = { path = "../usvgr", version = "0.28.9" }
 lru = "0.9.0"
 
 [features]

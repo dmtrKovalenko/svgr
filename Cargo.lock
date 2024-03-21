@@ -655,7 +655,7 @@ dependencies = [
 
 [[package]]
 name = "svgr"
-version = "0.28.7"
+version = "0.28.9"
 dependencies = [
  "gif",
  "image",
@@ -675,7 +675,7 @@ dependencies = [
 
 [[package]]
 name = "svgrtypes"
-version = "0.28.7"
+version = "0.28.9"
 dependencies = [
  "kurbo 0.8.3",
  "proc-macro2",
@@ -795,7 +795,7 @@ checksum = "b1d386ff53b415b7fe27b50bb44679e2cc4660272694b7b6f3326d8480823a94"
 
 [[package]]
 name = "usvgr"
-version = "0.28.7"
+version = "0.28.9"
 dependencies = [
  "base64",
  "data-url",
@@ -815,7 +815,7 @@ dependencies = [
 
 [[package]]
 name = "usvgr-text-layout"
-version = "0.28.7"
+version = "0.28.9"
 dependencies = [
  "fontdb",
  "kurbo 0.9.1",
