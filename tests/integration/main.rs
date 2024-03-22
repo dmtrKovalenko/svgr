@@ -7,6 +7,7 @@ use usvgr_text_layout::{fontdb, TreeTextToPath};
 
 #[rustfmt::skip]
 mod render;
+mod cache_tests;
 
 const IMAGE_SIZE: u32 = 300;
 
@@ -46,7 +47,7 @@ static GLOBAL_IMAGE_DATA: Lazy<Arc<HashMap<String, Arc<PreloadedImageData>>>> = 
     Arc::new(hash_map)
 });
 
-pub fn render(name: &str) -> usize {
+pub fn render_with_cache(name: &str, cache: &mut SvgrCache) -> usize {
     let svg_path = format!("tests/svg/{}.svg", name);
     let png_path = format!("tests/png/{}.png", name);
 
@@ -70,7 +71,7 @@ pub fn render(name: &str) -> usize {
         fit_to,
         tiny_skia::Transform::default(),
         pixmap.as_mut(),
-        &mut SvgrCache::none(),
+        cache,
     )
     .unwrap();
 
@@ -99,6 +100,10 @@ pub fn render(name: &str) -> usize {
     }
 
     pixels_d
+}
+
+pub fn render(name: &str) -> usize {
+    render_with_cache(name, &mut SvgrCache::none())
 }
 
 fn load_png(path: &str) -> Vec<u8> {

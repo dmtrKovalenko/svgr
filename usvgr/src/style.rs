@@ -140,6 +140,7 @@ impl Hash for Stroke {
             .as_ref()
             .map(|vec| vec.iter().map(|v| v.to_bits()).collect::<Vec<_>>())
             .hash(state);
+        self.dashoffset.to_bits().hash(state);
 
         self.miterlimit.0.to_bits().hash(state);
         self.opacity.hash(state);

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+ <path
+    fill="none" 
+    stroke="#fff" 
+    stroke-dashoffset="100" 
+    stroke-linecap="round" 
+    stroke-dasharray="40.4579px, 796.447px"
+    stroke-linejoin="round" 
+    stroke-miterlimit="10"
+    stroke-width="10" 
+    d="M505 55c0-27.6-22.4-50-50-50s-50 22.4-50 50c0-27.6-22.4-50-50-50s-50 22.4-50 50c0-27.6-22.4-50-50-50s-50 22.4-50 50c0-27.6-22.4-50-50-50s-50 22.4-50 50c0-27.6-22.4-50-50-50S5 27.4 5 55"
+  />
+</svg>
