@@ -1,3 +1,4 @@
+set -euo pipefail
 VERSION="$1"
 
 if ! git diff --quiet; then
@@ -5,7 +6,7 @@ if ! git diff --quiet; then
   exit 1
 fi
 
-
+cargo install cargo-edit
 cargo set-version "$VERSION"
 
 git add --all 
