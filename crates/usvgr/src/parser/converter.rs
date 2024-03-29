@@ -10,7 +10,7 @@ use svgrtypes::{Length, LengthUnit as Unit, PaintOrderKind, TransformOrigin};
 use tiny_skia_path::Transform;
 
 #[cfg(feature = "text")]
-use self::text_to_paths::UsvgrTextOutlineCache;
+use crate::text::UsvgrTextOutlineCache;
 
 use super::svgtree::{self, AId, EId, FromValue, SvgNode};
 use super::units::{self, convert_length};

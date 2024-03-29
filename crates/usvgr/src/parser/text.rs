@@ -140,9 +140,11 @@ pub(crate) fn convert(
         abs_stroke_bounding_box: dummy,
         flattened: Box::new(Group::empty()),
         static_hash: text_node.static_hash(),
+        #[cfg(feature = "text")]
+        layouted: vec![],
     };
 
-    if let Some(text) = crate::text_to_paths::convert_with_cache(
+    if let Some(text) = crate::text::convert_with_cache(
         text,
         state.fontdb,
         cache.usvgr_text_cache.as_ref(),

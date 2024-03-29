@@ -7,6 +7,8 @@ use std::sync::Arc;
 use strict_num::NonZeroPositiveF32;
 pub use svgrtypes::FontFamily;
 
+#[cfg(feature = "text")]
+use crate::layout::Span;
 use crate::{
     Fill, Group, NonEmptyString, PaintOrder, Rect, Stroke, TextRendering, Transform, Visibility,
 };
@@ -523,6 +525,8 @@ pub struct Text {
     /// Pre-computed static hash for cache optimization.
     /// Propagated to the flattened Group after text-to-paths conversion.
     pub(crate) static_hash: Option<u64>,
+    #[cfg(feature = "text")]
+    pub(crate) layouted: Vec<Span>,
 }
 
 impl std::hash::Hash for Text {
@@ -653,10 +657,18 @@ impl Text {
     }
 
     /// Text converted into paths, ready to render.
-    ///
-    /// Returns `None` when the `text` build feature was disabled.
     pub fn flattened(&self) -> &Group {
         &self.flattened
+    }
+
+    /// The positioned glyphs and decoration spans of the text.
+    ///
+    /// This should only be used if you need more low-level access
+    /// to the glyphs that make up the text. If you just need the
+    /// outlines of the text, you should use `flattened` instead.
+    #[cfg(feature = "text")]
+    pub fn layouted(&self) -> &[Span] {
+        &self.layouted
     }
 
     pub(crate) fn subroots(&self, f: &mut dyn FnMut(&Group)) {
