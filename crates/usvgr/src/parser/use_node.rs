@@ -265,7 +265,7 @@ fn convert_children(
         parent.children.push(Node::Group(Box::new(g)));
     }
 
-    parent.abs_transform = old_abs_transform
+    parent.abs_transform = old_abs_transform;
 }
 
 fn get_clip_rect(
