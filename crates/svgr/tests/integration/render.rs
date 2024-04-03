@@ -1458,6 +1458,8 @@ use crate::render;
 #[test] fn text_text_escaped_text_4() { assert_eq!(render("tests/text/text/escaped-text-4"), 0); }
 #[test] fn text_text_fill_rule_eq_evenodd() { assert_eq!(render("tests/text/text/fill-rule=evenodd"), 0); }
 #[test] fn text_text_filter_bbox() { assert_eq!(render("tests/text/text/filter-bbox"), 0); }
+#[test] fn text_text_ligatures_handling_in_mixed_fonts_1() { assert_eq!(render("tests/text/text/ligatures-handling-in-mixed-fonts-1"), 0); }
+#[test] fn text_text_ligatures_handling_in_mixed_fonts_2() { assert_eq!(render("tests/text/text/ligatures-handling-in-mixed-fonts-2"), 0); }
 #[test] fn text_text_mm_coordinates() { assert_eq!(render("tests/text/text/mm-coordinates"), 0); }
 #[test] fn text_text_nested() { assert_eq!(render("tests/text/text/nested"), 0); }
 #[test] fn text_text_no_coordinates() { assert_eq!(render("tests/text/text/no-coordinates"), 0); }
