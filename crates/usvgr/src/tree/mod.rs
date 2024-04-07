@@ -37,6 +37,10 @@ impl NonEmptyString {
     pub(crate) fn get(&self) -> &str {
         &self.0
     }
+
+    pub(crate) fn take(self) -> String {
+        self.0
+    }
 }
 
 /// A non-zero `f32`.

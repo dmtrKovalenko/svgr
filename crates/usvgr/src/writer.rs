@@ -314,16 +314,16 @@ fn write_filters(tree: &Tree, opt: &WriteOptions, xml: &mut XmlWriter) {
                 filter::Kind::Image(ref img) => {
                     xml.start_svg_element(EId::FeImage);
                     xml.write_filter_primitive_attrs(filter.rect(), fe);
-                    xml.write_aspect(img.aspect);
-                    xml.write_svg_attribute(
-                        AId::ImageRendering,
-                        match img.rendering_mode {
-                            ImageRendering::OptimizeQuality => "optimizeQuality",
-                            ImageRendering::OptimizeSpeed => "optimizeSpeed",
-                        },
-                    );
                     match img.data {
                         filter::ImageKind::Image(ref kind) => {
+                            xml.write_aspect(img.aspect);
+                            xml.write_svg_attribute(
+                                AId::ImageRendering,
+                                match img.rendering_mode {
+                                    ImageRendering::OptimizeQuality => "optimizeQuality",
+                                    ImageRendering::OptimizeSpeed => "optimizeSpeed",
+                                },
+                            );
                             xml.write_image_data(kind);
                         }
                         filter::ImageKind::Use(ref node) => {
