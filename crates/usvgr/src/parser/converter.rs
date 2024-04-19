@@ -844,6 +844,7 @@ fn convert_path(
             abs_transform: parent.abs_transform,
             ..Group::empty()
         };
+
         let mut marker_state = state.clone();
 
         let bbox = tiny_skia_path
