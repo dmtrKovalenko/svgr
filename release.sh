@@ -17,7 +17,7 @@ cd ../svgr && cargo publish;
 
 git tag "v$VERSION"
 
-git push origin "v$VERSION"
+git push upstream "v$VERSION"
 
-git push
+git push upstream
 
