@@ -7,13 +7,8 @@ use std::sync::Arc;
 use svgrtypes::Length;
 
 use super::svgtree::{AId, SvgNode};
-use super::{converter, OptionLog, Options};
+use super::{converter, OptionLog};
 use crate::{Group, Image, ImageKind, Node, NonZeroRect, Size, ViewBox};
-
-/// A shorthand for [ImageHrefResolver]'s data function.
-#[cfg(feature = "text")]
-pub type ImageHrefDataResolverFn =
-    Box<dyn Fn(&str, Arc<Vec<u8>>, &Options, &fontdb::Database) -> Option<ImageKind> + Send + Sync>;
 
 #[derive(Debug)]
 /// Preloaded decoded raster image data

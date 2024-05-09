@@ -2,8 +2,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
-use std::num::NonZeroU16;
+use std::hash::{BuildHasher, Hash, Hasher};
+use std::num::{NonZeroU16, NonZeroUsize};
 use std::sync::Arc;
 
 use fontdb::{Database, ID};
@@ -15,15 +17,63 @@ use unicode_script::UnicodeScript;
 
 use crate::*;
 
-pub(crate) fn convert(text: &mut Text, fontdb: &fontdb::Database) -> Option<()> {
-    let (new_paths, bbox, stroke_bbox) = text_to_paths(text, fontdb)?;
+/// Text outline and layoute cache
+#[derive(Debug)]
+pub struct UsvgrTextOutlineCache {
+    cache: RefCell<lru::LruCache<u64, Option<Text>>>,
+    hash_builder: ahash::RandomState,
+}
+
+impl UsvgrTextOutlineCache {
+    /// Creates a new cache with the given size.
+    /// If the size is 0 none returned.
+    pub fn new(size: usize) -> Option<Self> {
+        if size > 0 {
+            Some(UsvgrTextOutlineCache {
+                cache: RefCell::new(lru::LruCache::new(NonZeroUsize::new(size).unwrap())),
+                hash_builder: ahash::RandomState::new(),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+pub(crate) fn convert_with_cache(
+    text: Text,
+    fontdb: &fontdb::Database,
+    cache: Option<&UsvgrTextOutlineCache>,
+) -> Option<Text> {
+    match cache {
+        Some(UsvgrTextOutlineCache {
+            cache,
+            hash_builder,
+        }) => {
+            let mut hasher = hash_builder.build_hasher();
+            text.hash(&mut hasher);
+            let hash = hasher.finish();
+
+            cache
+                .borrow_mut()
+                .get_or_insert(hash, || convert(text, fontdb))
+                // TODO figure out if we can avoid cloning here
+                // it is pretty expensive but in order to convert his to Rc
+                // it needs to remove all the mutabalities around flattened
+                .clone()
+        }
+        None => convert(text, fontdb),
+    }
+}
+
+pub(crate) fn convert(mut text: Text, fontdb: &fontdb::Database) -> Option<Text> {
+    let (new_paths, bbox, stroke_bbox) = text_to_paths(&text, fontdb)?;
 
     let mut group = Group {
         id: text.id.clone(),
         ..Group::empty()
     };
 
-    let rendering_mode = resolve_rendering_mode(text);
+    let rendering_mode = resolve_rendering_mode(&text);
     for mut path in new_paths {
         path.rendering_mode = rendering_mode;
         group.children.push(Node::Path(Box::new(path)));
@@ -39,7 +89,7 @@ pub(crate) fn convert(text: &mut Text, fontdb: &fontdb::Database) -> Option<()> 
     text.stroke_bounding_box = stroke_bbox.to_rect();
     text.abs_stroke_bounding_box = stroke_bbox.transform(text.abs_transform)?.to_rect();
 
-    Some(())
+    Some(text)
 }
 
 trait DatabaseExt {

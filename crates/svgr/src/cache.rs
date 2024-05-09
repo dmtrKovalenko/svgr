@@ -5,6 +5,7 @@ use std::{
 
 use lru::LruCache;
 use tiny_skia::Pixmap;
+use usvgr::{ahash, lru};
 
 #[derive(Debug)]
 struct SvgrCacheInternal<HashBuilder: BuildHasher = ahash::RandomState> {

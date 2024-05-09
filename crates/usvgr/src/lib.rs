@@ -66,5 +66,9 @@ mod text_to_paths;
 #[cfg(feature = "text")]
 pub use fontdb;
 
+pub use ahash;
+pub use lru;
+#[cfg(feature = "text")]
+pub use text_to_paths::UsvgrTextOutlineCache;
 pub use writer::WriteOptions;
 pub use xmlwriter::Indent;

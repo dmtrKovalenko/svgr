@@ -21,9 +21,11 @@ pub mod svgtree;
 #[cfg(feature = "text")]
 mod text;
 
-pub use image::{ImageHrefDataResolverFn, PreloadedImageData};
+pub use image::PreloadedImageData;
 pub use options::Options;
 pub(crate) use svgtree::{AId, EId};
+
+pub use self::converter::Cache;
 
 /// List of all errors.
 #[derive(Debug)]
@@ -143,6 +145,23 @@ impl crate::Tree {
         )
     }
 
+    /// Parses `Tree` from `roxmltree::Document` with a cache.
+    pub fn from_xmltree_with_cache(
+        doc: &roxmltree::Document,
+        opt: &Options,
+        cache: &mut Cache,
+        #[cfg(feature = "text")] fontdb: &fontdb::Database,
+    ) -> Result<Self, Error> {
+        let doc = svgtree::Document::parse_tree(doc)?;
+        self::converter::convert_doc(
+            &doc,
+            opt,
+            cache,
+            #[cfg(feature = "text")]
+            fontdb,
+        )
+    }
+
     /// Parses `Tree` from `roxmltree::Document`.
     pub fn from_xmltree(
         doc: &roxmltree::Document,
@@ -153,6 +172,7 @@ impl crate::Tree {
         self::converter::convert_doc(
             &doc,
             opt,
+            &mut Cache::default(),
             #[cfg(feature = "text")]
             fontdb,
         )
@@ -165,7 +185,30 @@ impl crate::Tree {
         #[cfg(feature = "text")] fontdb: &fontdb::Database,
     ) -> Result<Self, Error> {
         let doc = svgtree::Document::try_from(doc)?;
-        Self::from_svgtree(doc, opt, fontdb)
+        Self::from_svgtree(
+            doc,
+            opt,
+            &mut Cache::default(),
+            #[cfg(feature = "text")]
+            fontdb,
+        )
+    }
+
+    /// Parses `Tree` from `svgtree::NestedSvgDocument` with a cache.
+    pub fn from_nested_svgtree_with_cache(
+        doc: &svgtree::NestedSvgDocument,
+        opt: &Options,
+        cache: &mut Cache,
+        #[cfg(feature = "text")] fontdb: &fontdb::Database,
+    ) -> Result<Self, Error> {
+        let doc = svgtree::Document::try_from(doc)?;
+        Self::from_svgtree(
+            doc,
+            opt,
+            cache,
+            #[cfg(feature = "text")]
+            fontdb,
+        )
     }
 
     /// Parses `Tree` from the `svgtree::Document`.
@@ -174,9 +217,16 @@ impl crate::Tree {
     pub fn from_svgtree(
         doc: svgtree::Document,
         opt: &Options,
+        cache: &mut Cache,
         #[cfg(feature = "text")] fontdb: &fontdb::Database,
     ) -> Result<Self, Error> {
-        self::converter::convert_doc(&doc, opt, fontdb)
+        self::converter::convert_doc(
+            &doc,
+            opt,
+            cache,
+            #[cfg(feature = "text")]
+            fontdb,
+        )
     }
 }
 

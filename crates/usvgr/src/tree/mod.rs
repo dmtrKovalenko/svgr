@@ -7,7 +7,6 @@ mod geom;
 mod text;
 
 use std::sync::Arc;
-
 pub use strict_num::{self, ApproxEqUlps, NonZeroPositiveF32, NormalizedF32, PositiveF32};
 pub use svgrtypes::{Align, AspectRatio};
 

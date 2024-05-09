@@ -791,7 +791,7 @@ fn write_element(node: &Node, is_clip_path: bool, opt: &WriteOptions, xml: &mut 
                 xml.end_element();
                 xml.set_preserve_whitespaces(false);
             } else {
-                write_group_element(text.flattened(), is_clip_path, opt, xml);
+                write_group_element(&text.flattened(), is_clip_path, opt, xml);
             }
         }
     }

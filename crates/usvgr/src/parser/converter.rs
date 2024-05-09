@@ -9,6 +9,9 @@ use std::sync::Arc;
 
 use svgrtypes::{Length, LengthUnit as Unit, PaintOrderKind, TransformOrigin};
 
+#[cfg(feature = "text")]
+use self::text_to_paths::UsvgrTextOutlineCache;
+
 use super::svgtree::{self, AId, EId, FromValue, SvgNode};
 use super::units::{self, convert_length};
 use super::{marker, Error, Options};
@@ -34,8 +37,11 @@ pub struct State<'a> {
     pub(crate) fontdb: &'a fontdb::Database,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
+#[allow(missing_docs)]
 pub struct Cache {
+    #[cfg(feature = "text")]
+    pub usvgr_text_cache: Option<UsvgrTextOutlineCache>,
     pub clip_paths: HashMap<String, Arc<ClipPath>>,
     pub masks: HashMap<String, Arc<Mask>>,
     pub filters: HashMap<String, Arc<filter::Filter>>,
@@ -52,6 +58,34 @@ pub struct Cache {
 }
 
 impl Cache {
+    /// Cleans elements ids for the next SVG within the FFrames run
+    /// Surprisingly test suite fails if you are not actually cleaning the cache
+    /// meaning that it is not possible to reuse the ids between different runs for FFrames
+    /// But we do not clean our own caches which are designed to optimize cross SVG processing
+    pub fn clear(&mut self) {
+        self.clip_paths.clear();
+        self.masks.clear();
+        self.filters.clear();
+        self.all_ids.clear();
+        self.paint.clear();
+
+        self.linear_gradient_index = 0;
+        self.radial_gradient_index = 0;
+        self.pattern_index = 0;
+        self.clip_path_index = 0;
+        self.mask_index = 0;
+        self.filter_index = 0;
+    }
+
+    /// Creates a new cache with an external text outline cache
+    #[cfg(feature = "text")]
+    pub fn new_with_text_cache(text_cache_capacity: usize) -> Self {
+        Self {
+            usvgr_text_cache: UsvgrTextOutlineCache::new(text_cache_capacity),
+            ..Default::default()
+        }
+    }
+
     // TODO: macros?
     pub(crate) fn gen_linear_gradient_id(&mut self) -> NonEmptyString {
         loop {
@@ -249,6 +283,7 @@ impl SvgColorExt for svgrtypes::Color {
 pub(crate) fn convert_doc(
     svg_doc: &svgtree::Document,
     opt: &Options,
+    cache: &mut Cache,
     #[cfg(feature = "text")] fontdb: &fontdb::Database,
 ) -> Result<Tree, Error> {
     let svg = svg_doc.root_element();
@@ -294,8 +329,6 @@ pub(crate) fn convert_doc(
         fontdb,
     };
 
-    let mut cache = Cache::default();
-
     for node in svg_doc.descendants() {
         if let Some(tag) = node.tag_name() {
             if matches!(
@@ -306,28 +339,22 @@ pub(crate) fn convert_doc(
                     | EId::Mask
                     | EId::Pattern
                     | EId::RadialGradient
-            ) {
-                if !node.element_id().is_empty() {
-                    cache.all_ids.insert(string_hash(node.element_id()));
-                }
+            ) && !node.element_id().is_empty()
+            {
+                cache.all_ids.insert(string_hash(node.element_id()));
             }
         }
     }
 
-    convert_children(svg_doc.root(), &state, &mut cache, &mut tree.root);
-
-    // Clear cache to make sure that all `Arc<T>` objects have a single strong reference.
-    cache.clip_paths.clear();
-    cache.masks.clear();
-    cache.filters.clear();
-    cache.paint.clear();
+    convert_children(svg_doc.root(), &state, cache, &mut tree.root);
+    cache.clear();
 
     super::paint_server::update_paint_servers(
         &mut tree.root,
         Transform::default(),
         None,
         None,
-        &mut cache,
+        cache,
     );
     tree.collect_paint_servers();
     tree.root.collect_clip_paths(&mut tree.clip_paths);

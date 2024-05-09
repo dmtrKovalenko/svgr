@@ -123,7 +123,7 @@ pub(crate) fn convert(
 
     let dummy = Rect::from_xywh(0.0, 0.0, 0.0, 0.0).unwrap();
 
-    let mut text = Text {
+    let text = Text {
         id,
         rendering_mode,
         dx: pos_list.iter().map(|v| v.dx.unwrap_or(0.0)).collect(),
@@ -140,13 +140,13 @@ pub(crate) fn convert(
         flattened: Box::new(Group::empty()),
     };
 
-    if crate::text_to_paths::convert(&mut text, state.fontdb)
-        .is_none()
-    {
-        return;
+    if let Some(text) = crate::text_to_paths::convert_with_cache(
+        text,
+        state.fontdb,
+        cache.usvgr_text_cache.as_ref(),
+    ) {
+        parent.children.push(Node::Text(Box::new(text)));
     }
-
-    parent.children.push(Node::Text(Box::new(text)));
 }
 
 struct IterState {

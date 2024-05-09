@@ -1014,12 +1014,10 @@ dependencies = [
 name = "svgr"
 version = "0.40.0"
 dependencies = [
- "ahash",
  "gif 0.12.0",
  "image",
  "jpeg-decoder",
  "log",
- "lru",
  "once_cell",
  "pico-args",
  "png",
@@ -1247,6 +1245,7 @@ checksum = "b1d386ff53b415b7fe27b50bb44679e2cc4660272694b7b6f3326d8480823a94"
 name = "usvgr"
 version = "0.40.0"
 dependencies = [
+ "ahash",
  "base64",
  "data-url",
  "flate2",
@@ -1254,6 +1253,7 @@ dependencies = [
  "imagesize",
  "kurbo 0.9.5",
  "log",
+ "lru",
  "once_cell",
  "pico-args",
  "quote",
