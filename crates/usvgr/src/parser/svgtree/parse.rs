@@ -749,6 +749,8 @@ fn fix_recursive_fe_image(doc: &mut Document) {
     }
 }
 
+// This code is needed exclusively for fframes svgr macro so it is tested 
+// in the fframes repository. 
 impl<'a> TryFrom<&'a NestedSvgDocument<'a>> for Document<'a> {
     type Error = Error;
 
@@ -896,6 +898,11 @@ fn resolve_linked_node<'a>(
     nested_doc: &'a NestedSvgDocument,
 ) -> Option<&'a NestedNodeData<'a>> {
     let link_id = href.value.as_str();
+    if !link_id.starts_with('#') {
+        return None;
+    }
+
+    let link_id = &link_id[1..];
     let link_node = nested_doc
         .nodes
         .first()?
