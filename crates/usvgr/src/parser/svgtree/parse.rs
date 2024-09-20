@@ -10,7 +10,7 @@ use svgrtypes::FontShorthand;
 
 use super::{
     AId, Attribute, Document, EId, NestedNodeData, NestedNodeKind, NestedSvgDocument, NodeData,
-    NodeId, NodeKind, ShortRange,
+    NodeId, NodeKind, ShortRange, SvgAttributeValue,
 };
 
 /// SVG namespace.
@@ -51,7 +51,10 @@ impl<'input> Document<'input> {
     }
 
     fn append_attribute(&mut self, name: AId, value: roxmltree::StringStorage<'input>) {
-        self.attrs.push(Attribute { name, value });
+        self.attrs.push(Attribute {
+            name,
+            value: SvgAttributeValue::StringStorage(value),
+        });
     }
 }
 
@@ -624,12 +627,14 @@ impl simplecss::Element for XmlNode<'_, '_> {
 fn fix_recursive_patterns(doc: &mut Document) {
     while let Some(node_id) = find_recursive_pattern(AId::Fill, doc) {
         let idx = doc.get(node_id).attribute_id(AId::Fill).unwrap();
-        doc.attrs[idx].value = roxmltree::StringStorage::Borrowed("none");
+        doc.attrs[idx].value =
+            SvgAttributeValue::StringStorage(roxmltree::StringStorage::Borrowed("none"));
     }
 
     while let Some(node_id) = find_recursive_pattern(AId::Stroke, doc) {
         let idx = doc.get(node_id).attribute_id(AId::Stroke).unwrap();
-        doc.attrs[idx].value = roxmltree::StringStorage::Borrowed("none");
+        doc.attrs[idx].value =
+            SvgAttributeValue::StringStorage(roxmltree::StringStorage::Borrowed("none"));
     }
 }
 
@@ -680,7 +685,8 @@ fn find_recursive_pattern(aid: AId, doc: &mut Document) -> Option<NodeId> {
 fn fix_recursive_links(eid: EId, aid: AId, doc: &mut Document) {
     while let Some(node_id) = find_recursive_link(eid, aid, doc) {
         let idx = doc.get(node_id).attribute_id(aid).unwrap();
-        doc.attrs[idx].value = roxmltree::StringStorage::Borrowed("none");
+        doc.attrs[idx].value =
+            SvgAttributeValue::StringStorage(roxmltree::StringStorage::Borrowed("none"));
     }
 }
 
@@ -745,12 +751,13 @@ fn fix_recursive_fe_image(doc: &mut Document) {
 
     for id in ids {
         let idx = doc.get(id).attribute_id(AId::Filter).unwrap();
-        doc.attrs[idx].value = roxmltree::StringStorage::Borrowed("none");
+        doc.attrs[idx].value =
+            SvgAttributeValue::StringStorage(roxmltree::StringStorage::Borrowed("none"));
     }
 }
 
-// This code is needed exclusively for fframes svgr macro so it is tested 
-// in the fframes repository. 
+// This code is needed exclusively for fframes svgr macro so it is tested
+// in the fframes repository.
 impl<'a> TryFrom<&'a NestedSvgDocument<'a>> for Document<'a> {
     type Error = Error;
 
@@ -839,8 +846,8 @@ fn append_nested_element<'a>(
 ) {
     let attrs_start_idx = doc.attrs.len() as u32;
     for attr in node.attrs.iter() {
-        if let (AId::Style, style) = (&attr.name, &attr.value) {
-            for declaration in simplecss::DeclarationTokenizer::from(style.as_str()) {
+        if let (AId::Style, Some(style)) = (&attr.name, &attr.value.as_ref().as_str()) {
+            for declaration in simplecss::DeclarationTokenizer::from(*style) {
                 if let Some(aid) = AId::from_str(declaration.name) {
                     // Parse only the presentation attributes.
                     if aid.is_presentation() {
@@ -897,7 +904,7 @@ fn resolve_linked_node<'a>(
     href: &Attribute,
     nested_doc: &'a NestedSvgDocument,
 ) -> Option<&'a NestedNodeData<'a>> {
-    let link_id = href.value.as_str();
+    let link_id = href.value.as_ref().as_str()?;
     if !link_id.starts_with('#') {
         return None;
     }
@@ -910,7 +917,7 @@ fn resolve_linked_node<'a>(
         .find_recursively(&|node| {
             node.attrs
                 .iter()
-                .any(|attr| attr.name == AId::Id && attr.value.as_str() == link_id)
+                .any(|attr| attr.name == AId::Id && attr.value.as_ref().as_str() == Some(link_id))
         })?;
 
     Some(link_node)

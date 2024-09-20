@@ -2,21 +2,23 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #![allow(missing_docs)]
-use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::str::FromStr;
+use std::{collections::HashMap, sync::Arc};
 
 #[rustfmt::skip] mod names;
 /// FFrames: parser should be available publicly for the svg macro
 pub mod parse;
 mod text;
 
-use roxmltree::StringStorage;
+pub use roxmltree::StringStorage;
+pub use svgrtypes;
+use svgrtypes::LengthUnit;
 use tiny_skia_path::Transform;
 
 use crate::{
-    BlendMode, ImageRendering, Opacity, ShapeRendering, SpreadMethod, TextRendering, Units,
-    Visibility,
+    BlendMode, ImageRendering, Opacity, PreloadedImageData, ShapeRendering, SpreadMethod,
+    TextRendering, Units, Visibility,
 };
 pub use names::{AId, EId, ATTRIBUTES};
 pub use roxmltree;
@@ -337,13 +339,119 @@ pub struct NestedNodeData<'input> {
     pub children: Vec<Option<NestedNodeData<'input>>>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum SvgAttributeValue<'a> {
+    Float(f32, StringStorage<'a>),
+    Length(svgrtypes::Length),
+    Transform(svgrtypes::Transform),
+    Color(svgrtypes::Color),
+    StringStorage(StringStorage<'a>),
+    ImageData(Arc<PreloadedImageData>),
+}
+
+impl From<String> for SvgAttributeValue<'_> {
+    fn from(s: String) -> Self {
+        SvgAttributeValue::StringStorage(roxmltree::StringStorage::Owned(s.into()))
+    }
+}
+
+impl From<Arc<PreloadedImageData>> for SvgAttributeValue<'_> {
+    fn from(image: Arc<PreloadedImageData>) -> Self {
+        SvgAttributeValue::ImageData(image)
+    }
+}
+
+impl<'a> From<&'a str> for SvgAttributeValue<'a> {
+    fn from(s: &'a str) -> Self {
+        SvgAttributeValue::StringStorage(roxmltree::StringStorage::Borrowed(s))
+    }
+}
+
+// I agree it looks strange but it actually happens quite a lot within
+// fframes implementation so we just have it for DX reasons
+impl<'a> From<&&'a str> for SvgAttributeValue<'a> {
+    fn from(s: &&'a str) -> Self {
+        SvgAttributeValue::StringStorage(roxmltree::StringStorage::Borrowed(*s))
+    }
+}
+
+macro_rules! impl_value_from_numeric {
+    ($target:ty) => {
+        impl From<$target> for SvgAttributeValue<'_> {
+            fn from(v: $target) -> Self {
+                SvgAttributeValue::Float(v as f32, roxmltree::StringStorage::Owned(v.to_string().into()))
+            }
+        }
+
+        impl From<&$target> for SvgAttributeValue<'_> {
+            fn from(v: &$target) -> Self {
+                SvgAttributeValue::Float(*v as f32, roxmltree::StringStorage::Owned(v.to_string().into()))
+            }
+        }
+    };
+}
+
+impl_value_from_numeric!(f32);
+impl_value_from_numeric!(f64);
+impl_value_from_numeric!(i16);
+impl_value_from_numeric!(i32);
+impl_value_from_numeric!(i64);
+impl_value_from_numeric!(i8);
+impl_value_from_numeric!(isize);
+impl_value_from_numeric!(u16);
+impl_value_from_numeric!(u32);
+impl_value_from_numeric!(u64);
+impl_value_from_numeric!(u8);
+impl_value_from_numeric!(usize);
+
+impl From<svgrtypes::Length> for SvgAttributeValue<'_> {
+    fn from(v: svgrtypes::Length) -> Self {
+        SvgAttributeValue::Length(v)
+    }
+}
+
+impl From<svgrtypes::Transform> for SvgAttributeValue<'_> {
+    fn from(v: svgrtypes::Transform) -> Self {
+        SvgAttributeValue::Transform(v)
+    }
+}
+
+impl<'a> SvgAttributeValue<'a> {
+    pub fn as_ref(&'a self) -> SvgAttributeValueRef<'a> {
+        match self {
+            SvgAttributeValue::StringStorage(s) => SvgAttributeValueRef::Str(s.as_ref()),
+            SvgAttributeValue::Float(f, s) => SvgAttributeValueRef::Float(*f, s.as_ref()),
+            SvgAttributeValue::Length(v) => SvgAttributeValueRef::Length(*v),
+            SvgAttributeValue::Transform(v) => SvgAttributeValueRef::Transform(*v),
+            SvgAttributeValue::Color(c) => SvgAttributeValueRef::Color(*c),
+            SvgAttributeValue::ImageData(image) => SvgAttributeValueRef::ImageData(&image),
+        }
+    }
+}
+
+impl std::fmt::Display for SvgAttributeValue<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        match self {
+            SvgAttributeValue::StringStorage(s) => write!(f, "{}", s),
+            SvgAttributeValue::Float(_, s) => write!(f, "{}", s),
+            SvgAttributeValue::Length(v) => write!(f, "{:?}", v),
+            SvgAttributeValue::Transform(v) => write!(f, "{:?}", v),
+            // TODO figure out if it it as in issue that we ignore the alpha here
+            SvgAttributeValue::Color(svgrtypes::Color {
+                red, green, blue, ..
+            }) => write!(f, "rgb({red}, {green}, {blue})"),
+            SvgAttributeValue::ImageData(ref image) => write!(f, "{:?}", image.id),
+        }
+    }
+}
+
 /// An attribute.
 #[derive(Clone, PartialEq)]
 pub struct Attribute<'input> {
     /// Attribute's name.
     pub name: AId,
     /// Attribute's value.
-    pub value: roxmltree::StringStorage<'input>,
+    pub value: SvgAttributeValue<'input>,
 }
 
 impl std::fmt::Debug for Attribute<'_> {
@@ -415,31 +523,22 @@ impl<'a, 'input: 'a> SvgNode<'a, 'input> {
 
     /// Returns an attribute value.
     pub fn attribute<T: FromValue<'a, 'input>>(&self, aid: AId) -> Option<T> {
-        let value = self
-            .attributes()
-            .iter()
-            .find(|a| a.name == aid)
-            .map(|a| a.value.as_str())?;
-        match T::parse(*self, aid, value) {
-            Some(v) => Some(v),
-            None => {
-                // TODO: show position in XML
-                log::warn!("Failed to parse {} value: '{}'.", aid, value);
-                None
-            }
-        }
+        let attr = self.attributes().iter().find(|a| a.name == aid)?;
+
+        T::parse(*self, aid, attr.value.as_ref())
+    }
+
+    pub fn attribute_value(&'a self, aid: AId) -> Option<SvgAttributeValueRef<'a>> {
+        let attr = self.attributes().iter().find(|a| a.name == aid)?;
+        Some(attr.value.as_ref())
     }
 
     /// Returns an attribute value.
     ///
     /// Same as `SvgNode::attribute`, but doesn't show a warning.
     pub fn try_attribute<T: FromValue<'a, 'input>>(&self, aid: AId) -> Option<T> {
-        let value = self
-            .attributes()
-            .iter()
-            .find(|a| a.name == aid)
-            .map(|a| a.value.as_str())?;
-        T::parse(*self, aid, value)
+        let attr = self.attributes().iter().find(|a| a.name == aid)?;
+        T::parse(*self, aid, attr.value.as_ref())
     }
 
     #[inline]
@@ -964,37 +1063,74 @@ fn is_non_inheritable(id: AId) -> bool {
     )
 }
 
-// TODO: is there a way yo make it less ugly? Too many lifetimes.
-/// A trait for parsing attribute values.
+#[derive(Debug)]
+pub enum SvgAttributeValueRef<'a> {
+    Str(&'a str),
+    // so the reason to have this is that sometimes values that will be stored as 
+    // ints in the the tree have to be requested as strings and it is easier for now to 
+    // convert them on flight than implement the type safety for the whole SVG spec
+    // Int(i32),
+    Float(f32, &'a str),
+    Length(svgrtypes::Length),
+    Transform(svgrtypes::Transform),
+    Color(svgrtypes::Color),
+    ImageData(&'a Arc<PreloadedImageData>),
+}
+
+impl<'a> SvgAttributeValueRef<'a> {
+    pub fn as_str(&self) -> Option<&'a str> {
+        match self {
+            SvgAttributeValueRef::Str(s) => Some(s),
+            SvgAttributeValueRef::Float(_, s) => Some(s),
+            _ => None,
+        }
+    }
+}
+
 pub trait FromValue<'a, 'input: 'a>: Sized {
-    /// Parses an attribute value.
-    ///
-    /// When `None` is returned, the attribute value will be logged as a parsing failure.
-    fn parse(node: SvgNode<'a, 'input>, aid: AId, value: &'a str) -> Option<Self>;
+    fn parse(node: SvgNode<'a, 'input>, aid: AId, value: SvgAttributeValueRef<'a>) -> Option<Self>;
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for &'a str {
-    fn parse(_: SvgNode<'a, 'input>, _: AId, value: &'a str) -> Option<Self> {
-        Some(value)
+    fn parse(node: SvgNode<'a, 'input>, aid: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        let str_value = value.as_str();
+
+        if let None = str_value {
+            panic!("{aid:?} requested a str on the node {node:?} but received a {value:?}");
+        }
+
+        str_value
     }
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for f32 {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        svgrtypes::Number::from_str(value).ok().map(|v| v.0 as f32)
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        match value {
+            SvgAttributeValueRef::Float(f, _) => Some(f),
+            _ => svgrtypes::Number::from_str(value.as_str()?)
+                .ok()
+                .map(|v| v.0 as f32),
+        }
     }
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for svgrtypes::Length {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        svgrtypes::Length::from_str(value).ok()
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        match value {
+            SvgAttributeValueRef::Length(l) => Some(l),
+            SvgAttributeValueRef::Float(number, _) => Some(svgrtypes::Length {
+                number: number as f64,
+                unit: LengthUnit::None,
+            }),
+            _ => svgrtypes::Length::from_str(value.as_str()?).ok(),
+        }
     }
 }
 
-// TODO: to svgrtypes?
 impl<'a, 'input: 'a> FromValue<'a, 'input> for Opacity {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        let length = svgrtypes::Length::from_str(value).ok()?;
+    fn parse(node: SvgNode, aid: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        let length = svgrtypes::Length::parse(node, aid, value)?;
+
         if length.unit == svgrtypes::LengthUnit::Percent {
             Some(Opacity::new_clamped(length.number as f32 / 100.0))
         } else if length.unit == svgrtypes::LengthUnit::None {
@@ -1006,10 +1142,13 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for Opacity {
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for Transform {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        let ts = match svgrtypes::Transform::from_str(value) {
-            Ok(v) => v,
-            Err(_) => return None,
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        let ts = match value {
+            SvgAttributeValueRef::Transform(t) => t,
+            _ => {
+                let s = value.as_str()?;
+                svgrtypes::Transform::from_str(s).ok()?
+            }
         };
 
         let ts = Transform::from_row(
@@ -1029,21 +1168,55 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for Transform {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum MaybeTransform {
+    Valid(Transform),
+    Invalid
+}
+
+impl<'a, 'input: 'a> FromValue<'a, 'input> for MaybeTransform {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        let ts = match value {
+            SvgAttributeValueRef::Transform(t) => t,
+            SvgAttributeValueRef::Str(text) => {
+                svgrtypes::Transform::from_str(text).ok()?
+            }
+            _ => return None,
+        };
+
+        let ts = Transform::from_row(
+            ts.a as f32,
+            ts.b as f32,
+            ts.c as f32,
+            ts.d as f32,
+            ts.e as f32,
+            ts.f as f32,
+        );
+
+        if ts.is_valid() {
+            Some(MaybeTransform::Valid(ts))
+        } else {
+            Some(MaybeTransform::Invalid)
+        }
+    }
+}
+
+
 impl<'a, 'input: 'a> FromValue<'a, 'input> for svgrtypes::TransformOrigin {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        Self::from_str(value).ok()
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        Self::from_str(value.as_str()?).ok()
     }
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for svgrtypes::ViewBox {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        Self::from_str(value).ok()
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        Self::from_str(value.as_str()?).ok()
     }
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for Units {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        match value {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        match value.as_str()? {
             "userSpaceOnUse" => Some(Units::UserSpaceOnUse),
             "objectBoundingBox" => Some(Units::ObjectBoundingBox),
             _ => None,
@@ -1052,45 +1225,50 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for Units {
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for svgrtypes::AspectRatio {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        Self::from_str(value).ok()
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        Self::from_str(value.as_str()?).ok()
     }
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for svgrtypes::PaintOrder {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        Self::from_str(value).ok()
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        Self::from_str(value.as_str()?).ok()
     }
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for svgrtypes::Color {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        Self::from_str(value).ok()
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        match value {
+            SvgAttributeValueRef::Str(str) => Self::from_str(str).ok(),
+            SvgAttributeValueRef::Color(color) => Some(color),
+            _ => None,
+        }
     }
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for svgrtypes::Angle {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        Self::from_str(value).ok()
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        Self::from_str(value.as_str()?).ok()
     }
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for svgrtypes::EnableBackground {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        Self::from_str(value).ok()
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        Self::from_str(value.as_str()?).ok()
     }
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for svgrtypes::Paint<'a> {
-    fn parse(_: SvgNode, _: AId, value: &'a str) -> Option<Self> {
-        Self::from_str(value).ok()
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        Self::from_str(value.as_str()?).ok()
     }
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for Vec<f32> {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        let s = value.as_str()?;
         let mut list = Vec::new();
-        for n in svgrtypes::NumberListParser::from(value) {
+        for n in svgrtypes::NumberListParser::from(s) {
             list.push(n.ok()? as f32);
         }
 
@@ -1099,9 +1277,10 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for Vec<f32> {
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for Vec<svgrtypes::Length> {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        let s = value.as_str()?;
         let mut list = Vec::new();
-        for n in svgrtypes::LengthListParser::from(value) {
+        for n in svgrtypes::LengthListParser::from(s) {
             list.push(n.ok()?);
         }
 
@@ -1110,8 +1289,9 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for Vec<svgrtypes::Length> {
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for Visibility {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        match value {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        let s = value.as_str()?;
+        match s {
             "visible" => Some(Visibility::Visible),
             "hidden" => Some(Visibility::Hidden),
             "collapse" => Some(Visibility::Collapse),
@@ -1121,8 +1301,9 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for Visibility {
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for SpreadMethod {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        match value {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        let s = value.as_str()?;
+        match s {
             "pad" => Some(SpreadMethod::Pad),
             "reflect" => Some(SpreadMethod::Reflect),
             "repeat" => Some(SpreadMethod::Repeat),
@@ -1132,8 +1313,9 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for SpreadMethod {
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for ShapeRendering {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        match value {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        let s = value.as_str()?;
+        match s {
             "optimizeSpeed" => Some(ShapeRendering::OptimizeSpeed),
             "crispEdges" => Some(ShapeRendering::CrispEdges),
             "auto" | "geometricPrecision" => Some(ShapeRendering::GeometricPrecision),
@@ -1143,8 +1325,9 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for ShapeRendering {
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for TextRendering {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        match value {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        let s = value.as_str()?;
+        match s {
             "optimizeSpeed" => Some(TextRendering::OptimizeSpeed),
             "auto" | "optimizeLegibility" => Some(TextRendering::OptimizeLegibility),
             "geometricPrecision" => Some(TextRendering::GeometricPrecision),
@@ -1154,8 +1337,9 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for TextRendering {
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for ImageRendering {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        match value {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        let s = value.as_str()?;
+        match s {
             "auto" | "optimizeQuality" => Some(ImageRendering::OptimizeQuality),
             "optimizeSpeed" => Some(ImageRendering::OptimizeSpeed),
             _ => None,
@@ -1164,8 +1348,9 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for ImageRendering {
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for BlendMode {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        match value {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        let s = value.as_str()?;
+        match s {
             "normal" => Some(BlendMode::Normal),
             "multiply" => Some(BlendMode::Multiply),
             "screen" => Some(BlendMode::Screen),
@@ -1188,13 +1373,13 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for BlendMode {
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for SvgNode<'a, 'input> {
-    fn parse(node: SvgNode<'a, 'input>, aid: AId, value: &str) -> Option<Self> {
+    fn parse(node: SvgNode<'a, 'input>, aid: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        let s = value.as_str()?;
         let id = if aid == AId::Href {
-            svgrtypes::IRI::from_str(value).ok().map(|v| v.0)
+            svgrtypes::IRI::from_str(s).ok().map(|v| v.0)?
         } else {
-            svgrtypes::FuncIRI::from_str(value).ok().map(|v| v.0)
-        }?;
-
+            svgrtypes::FuncIRI::from_str(s).ok().map(|v| v.0)?
+        };
         node.document().element_by_id(id)
     }
 }

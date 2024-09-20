@@ -5,6 +5,7 @@
 use super::converter::{self, SvgColorExt};
 use super::paint_server;
 use super::svgtree::{AId, FromValue, SvgNode};
+use crate::svgtree::SvgAttributeValueRef;
 use crate::tree::ContextElement;
 use crate::{
     ApproxEqUlps, Color, Fill, FillRule, LineCap, LineJoin, Opacity, Paint, Stroke,
@@ -12,8 +13,8 @@ use crate::{
 };
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for LineCap {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        match value {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        match value.as_str()? {
             "butt" => Some(LineCap::Butt),
             "round" => Some(LineCap::Round),
             "square" => Some(LineCap::Square),
@@ -23,8 +24,8 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for LineCap {
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for LineJoin {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        match value {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        match value.as_str()? {
             "miter" => Some(LineJoin::Miter),
             "miter-clip" => Some(LineJoin::MiterClip),
             "round" => Some(LineJoin::Round),
@@ -35,8 +36,8 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for LineJoin {
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for FillRule {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        match value {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        match value.as_str()? {
             "nonzero" => Some(FillRule::NonZero),
             "evenodd" => Some(FillRule::EvenOdd),
             _ => None,
@@ -133,6 +134,13 @@ fn convert_paint(
     opacity: &mut Opacity,
     cache: &mut converter::Cache,
 ) -> Option<(Paint, Option<ContextElement>)> {
+    let inlined_color: Option<svgrtypes::Color> = node.attribute(aid);
+    if let Some(svg_color) = inlined_color {
+        let (color, alpha) = svg_color.split_alpha();
+        *opacity = alpha;
+        return Some((Paint::Color(color), None));
+    }
+
     let value: &str = node.attribute(aid)?;
     let paint = match svgrtypes::Paint::from_str(value) {
         Ok(v) => v,

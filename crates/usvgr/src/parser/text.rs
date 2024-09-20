@@ -6,14 +6,15 @@ use std::sync::Arc;
 
 use kurbo::{ParamCurve, ParamCurveArclen};
 use svgrtypes::{parse_font_families, FontFamily, Length, LengthUnit};
+use svgtree::SvgAttributeValueRef;
 
 use super::svgtree::{AId, EId, FromValue, SvgNode};
 use super::{converter, style, OptionLog};
 use crate::*;
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for TextAnchor {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        match value {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        match value.as_str()? {
             "start" => Some(TextAnchor::Start),
             "middle" => Some(TextAnchor::Middle),
             "end" => Some(TextAnchor::End),
@@ -23,8 +24,8 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for TextAnchor {
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for AlignmentBaseline {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        match value {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        match value.as_str()? {
             "auto" => Some(AlignmentBaseline::Auto),
             "baseline" => Some(AlignmentBaseline::Baseline),
             "before-edge" => Some(AlignmentBaseline::BeforeEdge),
@@ -43,8 +44,8 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for AlignmentBaseline {
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for DominantBaseline {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        match value {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        match value.as_str()? {
             "auto" => Some(DominantBaseline::Auto),
             "use-script" => Some(DominantBaseline::UseScript),
             "no-change" => Some(DominantBaseline::NoChange),
@@ -63,8 +64,8 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for DominantBaseline {
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for LengthAdjust {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        match value {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        match value.as_str()? {
             "spacing" => Some(LengthAdjust::Spacing),
             "spacingAndGlyphs" => Some(LengthAdjust::SpacingAndGlyphs),
             _ => None,
@@ -73,8 +74,8 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for LengthAdjust {
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for FontStyle {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        match value {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        match value.as_str()? {
             "normal" => Some(FontStyle::Normal),
             "italic" => Some(FontStyle::Italic),
             "oblique" => Some(FontStyle::Oblique),

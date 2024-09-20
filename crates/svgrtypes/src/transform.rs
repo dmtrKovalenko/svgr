@@ -1,5 +1,7 @@
 use std::f64;
 
+use quote::ToTokens;
+
 use crate::{Error, Stream};
 
 /// Representation of the [`<transform>`] type.
@@ -16,6 +18,22 @@ pub struct Transform {
     pub f: f64,
 }
 
+impl ToTokens for Transform {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let Transform { a, b, c, d, e, f } = self;
+
+        tokens.extend(quote::quote! {
+            svgrtypes::Transform {
+                a: #a,
+                b: #b,
+                c: #c,
+                d: #d,
+                e: #e,
+                f: #f,
+            }
+        });
+    }
+}
 impl Transform {
     /// Constructs a new transform.
     #[inline]

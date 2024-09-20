@@ -4,10 +4,10 @@
 
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::str::FromStr;
 use std::sync::Arc;
 
 use svgrtypes::{Length, LengthUnit as Unit, PaintOrderKind, TransformOrigin};
+use tiny_skia_path::Transform;
 
 #[cfg(feature = "text")]
 use self::text_to_paths::UsvgrTextOutlineCache;
@@ -16,6 +16,8 @@ use super::svgtree::{self, AId, EId, FromValue, SvgNode};
 use super::units::{self, convert_length};
 use super::{marker, Error, Options};
 use crate::parser::paint_server::process_paint;
+use crate::svgtree::macro_prelude::MaybeTransform;
+use crate::svgtree::SvgAttributeValueRef;
 use crate::*;
 
 #[derive(Clone, Debug)]
@@ -232,26 +234,12 @@ impl<'a, 'input: 'a> SvgNode<'a, 'input> {
     pub fn has_valid_transform(&self, aid: AId) -> bool {
         // Do not use Node::attribute::<Transform>, because it will always
         // return a valid transform.
-
-        let attr = match self.attribute(aid) {
-            Some(attr) => attr,
-            None => return true,
-        };
-
-        let ts = match svgrtypes::Transform::from_str(attr) {
-            Ok(v) => v,
-            Err(_) => return true,
-        };
-
-        let ts = Transform::from_row(
-            ts.a as f32,
-            ts.b as f32,
-            ts.c as f32,
-            ts.d as f32,
-            ts.e as f32,
-            ts.f as f32,
-        );
-        ts.is_valid()
+        match self.attribute::<MaybeTransform>(aid) {
+            Some(MaybeTransform::Valid(_)) => true,
+            // no transform is a valid transform
+            None => true,
+            _ => false,
+        }
     }
 
     pub fn is_visible_element(&self, opt: &crate::Options) -> bool {
@@ -620,8 +608,8 @@ impl Default for Isolation {
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for Isolation {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        match value {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        match value.as_str()? {
             "auto" => Some(Isolation::Auto),
             "isolate" => Some(Isolation::Isolate),
             _ => None,

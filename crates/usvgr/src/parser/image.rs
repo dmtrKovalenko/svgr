@@ -8,9 +8,10 @@ use svgrtypes::Length;
 
 use super::svgtree::{AId, SvgNode};
 use super::{converter, OptionLog};
+use crate::svgtree::SvgAttributeValueRef;
 use crate::{Group, Image, ImageKind, Node, NonZeroRect, Size, ViewBox};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 /// Preloaded decoded raster image data
 pub struct PreloadedImageData {
     /// The decoded image data in RGBA format with blended semi trsparent color.
@@ -73,11 +74,20 @@ impl PreloadedImageData {
 }
 
 pub(crate) fn convert(node: SvgNode, state: &converter::State, parent: &mut Group) -> Option<()> {
-    let href = node
-        .try_attribute(AId::Href)
+    let attr = node
+        .attributes()
+        .iter()
+        .find(|a| a.name == AId::Href)
         .log_none(|| log::warn!("Image lacks the 'xlink:href' attribute. Skipped."))?;
 
-    let kind = get_href_data(href, state)?;
+    let (href, kind) = match attr.value.as_ref() {
+        SvgAttributeValueRef::Str(href) => Some((href, get_href_data(href, state)?)),
+        SvgAttributeValueRef::ImageData(image_data) => Some((
+            image_data.id.as_str(),
+            ImageKind::DATA(Arc::clone(image_data)),
+        )),
+        _ => None,
+    }?;
 
     let visibility = node.find_attribute(AId::Visibility).unwrap_or_default();
     let rendering_mode = node
