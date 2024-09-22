@@ -46,7 +46,7 @@ pub fn render(
     let ts = tree.view_box().to_transform(tree.size());
     let root_transform = transform.pre_concat(ts);
 
-    render::render_nodes(tree.root(), &ctx, root_transform, pixmap, cache);
+    render::render_nodes(tree.root(), ctx, root_transform, pixmap, cache);
 }
 
 /// Renders a node onto the pixmap.
@@ -69,7 +69,7 @@ pub fn render_node(
     let bbox = node.abs_layer_bounding_box()?;
     transform = transform.pre_translate(-bbox.x(), -bbox.y());
 
-    render::render_node(node, &ctx, transform, pixmap, cache);
+    render::render_node(node, ctx, transform, pixmap, cache);
     Some(())
 }
 
