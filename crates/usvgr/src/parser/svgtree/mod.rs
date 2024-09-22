@@ -1096,7 +1096,7 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for &'a str {
         let str_value = value.as_str();
 
         if let None = str_value {
-            panic!("{aid:?} requested a str on the node {node:?} but received a {value:?}");
+            eprintln!("FFrames critical warning: Attr `{aid:?}` requested a Str type on the node {node:?} but received a {value:?}. Report/fix immediately");
         }
 
         str_value
