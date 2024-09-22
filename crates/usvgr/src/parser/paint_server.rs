@@ -276,11 +276,11 @@ fn convert_stops(grad: SvgNode) -> Vec<Stop> {
             prev_offset = Length::new_number(offset);
             let offset = crate::f32_bound(0.0, offset as f32, 1.0);
 
-            let (color, opacity) = match stop.attribute(AId::StopColor) {
-                Some("currentColor") => stop
+            let (color, opacity) = match stop.attribute_value(AId::StopColor) {
+                Some(svgtree::SvgAttributeValueRef::Str("currentColor")) => stop
                     .find_attribute(AId::Color)
                     .unwrap_or_else(svgrtypes::Color::black),
-                Some(value) => {
+                Some(svgtree::SvgAttributeValueRef::Str(value)) => {
                     if let Ok(c) = svgrtypes::Color::from_str(value) {
                         c
                     } else {
@@ -288,6 +288,7 @@ fn convert_stops(grad: SvgNode) -> Vec<Stop> {
                         svgrtypes::Color::black()
                     }
                 }
+                Some(svgtree::SvgAttributeValueRef::Color(color)) => color,
                 _ => svgrtypes::Color::black(),
             }
             .split_alpha();

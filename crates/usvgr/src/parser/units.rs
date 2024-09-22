@@ -6,6 +6,7 @@ use svgrtypes::{Length, LengthUnit as Unit};
 
 use super::converter;
 use super::svgtree::{AId, SvgNode};
+use crate::svgtree::SvgAttributeValueRef;
 use crate::Units;
 
 #[inline(never)]
@@ -76,15 +77,22 @@ pub(crate) fn convert_user_length(
 
 #[inline(never)]
 pub(crate) fn convert_list(node: SvgNode, aid: AId, state: &converter::State) -> Option<Vec<f32>> {
-    if let Some(text) = node.attribute::<&str>(aid) {
-        let mut num_list = Vec::new();
-        for length in svgrtypes::LengthListParser::from(text).flatten() {
-            num_list.push(convert_user_length(length, node, aid, state));
+    match node.attribute_value(aid) {
+        Some(SvgAttributeValueRef::Float(length, _)) => {
+            Some(vec![convert_user_length(Length::new_number(length as f64), node, aid, state)])
         }
+        Some(SvgAttributeValueRef::Length(length)) => {
+            Some(vec![convert_user_length(length, node, aid, state)])
+        }
+        Some(SvgAttributeValueRef::Str(text)) => {
+            let mut num_list = Vec::new();
+            for length in svgrtypes::LengthListParser::from(text).flatten() {
+                num_list.push(convert_user_length(length, node, aid, state));
+            }
 
-        Some(num_list)
-    } else {
-        None
+            Some(num_list)
+        }
+        _ => None
     }
 }
 

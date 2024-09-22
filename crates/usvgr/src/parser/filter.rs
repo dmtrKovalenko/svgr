@@ -13,6 +13,7 @@ use svgrtypes::{Length, LengthUnit as Unit};
 
 use crate::{
     filter::{self, *},
+    svgtree::SvgAttributeValueRef,
     ApproxZeroUlps, Color, Group, Node, NonEmptyString, NonZeroF32, NonZeroRect, Opacity, Size,
     Units,
 };
@@ -23,8 +24,8 @@ use super::svgtree::{AId, EId, FromValue, SvgNode};
 use super::OptionLog;
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for filter::ColorInterpolation {
-    fn parse(_: SvgNode, _: AId, value: &str) -> Option<Self> {
-        match value {
+    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        match value.as_str()? {
             "sRGB" => Some(filter::ColorInterpolation::SRGB),
             "linearRGB" => Some(filter::ColorInterpolation::LinearRGB),
             _ => None,
@@ -747,7 +748,7 @@ fn convert_displacement_map(fe: SvgNode, scale: Size, primitives: &[Primitive]) 
 }
 
 fn convert_drop_shadow(fe: SvgNode, scale: Size, primitives: &[Primitive]) -> Kind {
-    let (std_dev_x, std_dev_y) = convert_std_dev_attr(fe, scale, "2 2");
+    let (std_dev_x, std_dev_y) = convert_std_dev_attr(fe, scale, (2., 2.));
 
     let (color, opacity) = fe
         .attribute(AId::FloodColor)
@@ -786,7 +787,7 @@ fn convert_flood(fe: SvgNode) -> Kind {
 }
 
 fn convert_gaussian_blur(fe: SvgNode, scale: Size, primitives: &[Primitive]) -> Kind {
-    let (std_dev_x, std_dev_y) = convert_std_dev_attr(fe, scale, "0 0");
+    let (std_dev_x, std_dev_y) = convert_std_dev_attr(fe, scale, (0.,0.));
     Kind::GaussianBlur(GaussianBlur {
         input: resolve_input(fe, AId::In, primitives),
         std_dev_x,
@@ -794,20 +795,33 @@ fn convert_gaussian_blur(fe: SvgNode, scale: Size, primitives: &[Primitive]) -> 
     })
 }
 
-fn convert_std_dev_attr(fe: SvgNode, scale: Size, default: &str) -> (PositiveF32, PositiveF32) {
-    let text = fe.attribute(AId::StdDeviation).unwrap_or(default);
-    let mut parser = svgrtypes::NumberListParser::from(text);
+fn convert_std_dev_attr(
+    fe: SvgNode,
+    scale: Size,
+    default: (f64, f64),
+) -> (PositiveF32, PositiveF32) {
+    let (std_dev_x, std_dev_y) = match fe.attribute_value(AId::StdDeviation) {
+        Some(SvgAttributeValueRef::Str(text)) => {
+            let mut parser = svgrtypes::NumberListParser::from(text);
 
-    let n1 = parser.next().and_then(|n| n.ok());
-    let n2 = parser.next().and_then(|n| n.ok());
-    // `stdDeviation` must have no more than two values.
-    // Otherwise we should fallback to `0 0`.
-    let n3 = parser.next().and_then(|n| n.ok());
+            let n1 = parser.next().and_then(|n| n.ok());
+            let n2 = parser.next().and_then(|n| n.ok());
+            // `stdDeviation` must have no more than two values.
+            // Otherwise we should fallback to `0 0`.
+            let n3 = parser.next().and_then(|n| n.ok());
 
-    let (std_dev_x, std_dev_y) = match (n1, n2, n3) {
-        (Some(n1), Some(n2), None) => (n1, n2),
-        (Some(n1), None, None) => (n1, n1),
-        _ => (0.0, 0.0),
+            let (std_dev_x, std_dev_y) = match (n1, n2, n3) {
+                (Some(n1), Some(n2), None) => (n1, n2),
+                (Some(n1), None, None) => (n1, n1),
+                _ => (0.0, 0.0),
+            };
+
+            (std_dev_x, std_dev_y)
+        },
+        Some(SvgAttributeValueRef::Float(float, _)) => {
+            (float as f64, float as f64)
+        },
+        _ => default,
     };
 
     let std_dev_x = (std_dev_x as f32) * scale.width();

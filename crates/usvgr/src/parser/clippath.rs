@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use super::converter;
 use super::svgtree::{AId, EId, SvgNode};
+use crate::svgtree::SvgAttributeValueRef;
 use crate::{ClipPath, Group, NonEmptyString, NonZeroRect, Transform, Units};
 
 pub(crate) fn convert(
@@ -95,17 +96,22 @@ pub(crate) fn convert(
 fn resolve_clip_path_transform(node: SvgNode, state: &converter::State) -> Option<Transform> {
     // Do not use Node::attribute::<Transform>, because it will always
     // return a valid transform.
+    let ts = if let Some(SvgAttributeValueRef::Transform(transform)) =
+        node.attribute_value(AId::Transform)
+    {
+        transform
+    } else {
+        let value: &str = match node.attribute(AId::Transform) {
+            Some(v) => v,
+            None => return Some(Transform::default()),
+        };
 
-    let value: &str = match node.attribute(AId::Transform) {
-        Some(v) => v,
-        None => return Some(Transform::default()),
-    };
-
-    let ts = match svgrtypes::Transform::from_str(value) {
-        Ok(v) => v,
-        Err(_) => {
-            log::warn!("Failed to parse {} value: '{}'.", AId::Transform, value);
-            return None;
+        match svgrtypes::Transform::from_str(value) {
+            Ok(v) => v,
+            Err(_) => {
+                log::warn!("Failed to parse {} value: '{}'.", AId::Transform, value);
+                return None;
+            }
         }
     };
 

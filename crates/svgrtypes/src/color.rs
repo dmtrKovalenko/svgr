@@ -12,6 +12,27 @@ pub struct Color {
     pub alpha: u8,
 }
 
+impl quote::ToTokens for Color {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let Self {
+            red,
+            green,
+            blue,
+            alpha,
+        } = self;
+
+        quote::quote! {
+            svgrtypes::Color {
+                red: #red,
+                blue: #blue,
+                green: #green,
+                alpha: #alpha,
+            }
+        }
+        .to_tokens(tokens)
+    }
+}
+
 impl Color {
     /// Constructs a new `Color` from RGB values.
     #[inline]

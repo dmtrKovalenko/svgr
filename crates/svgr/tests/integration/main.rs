@@ -1,7 +1,6 @@
-use std::{collections::HashMap, sync::Arc};
-
 use once_cell::sync::Lazy;
 use rgb::{FromSlice, RGBA8};
+use std::{collections::HashMap, sync::Arc};
 use svgr::SvgrCache;
 use usvgr::fontdb;
 
