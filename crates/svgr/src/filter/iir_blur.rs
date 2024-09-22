@@ -78,7 +78,7 @@ fn gaussian_channel(data: &mut [u8], d: &BlurData, channel: usize, buf: &mut Vec
     }
 }
 
-fn gaussianiir2d(d: &BlurData, buf: &mut Vec<f64>) {
+fn gaussianiir2d(d: &BlurData, buf: &mut [f64]) {
     // Filter horizontally along each row.
     let (lambda_x, dnu_x) = if d.sigma_x > 0.0 {
         let (lambda, dnu) = gen_coefficients(d.sigma_x, d.steps);

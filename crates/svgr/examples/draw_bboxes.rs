@@ -46,6 +46,7 @@ fn main() {
         &ctx,
     );
 
+    #[allow(clippy::field_reassign_with_default)]
     let mut stroke = tiny_skia::Stroke::default();
     stroke.width = 1.0 / zoom; // prevent stroke scaling as well
 

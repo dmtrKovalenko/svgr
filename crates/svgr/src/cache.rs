@@ -69,7 +69,7 @@ impl<THashBuilder: BuildHasher + Default> SvgrCache<THashBuilder> {
         node: &impl Hash,
         mut f: impl FnMut(&'a mut Self) -> Option<(Pixmap, &'a mut Self)>,
     ) -> Option<Cow<'a, Pixmap>> {
-        if let None = self.0 {
+        if self.0.is_none() {
             return f(self).map(|(value, _)| Cow::Owned(value));
         }
 

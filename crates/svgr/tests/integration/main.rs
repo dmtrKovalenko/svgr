@@ -64,7 +64,7 @@ static GLOBAL_SUB_SVGS: Lazy<std::sync::Arc<HashMap<String, Arc<usvgr::Tree>>>> 
 });
 
 fn load_sub_svg(path: &str) -> Arc<usvgr::Tree> {
-    let svg_data = std::fs::read(&path).unwrap();
+    let svg_data = std::fs::read(path).unwrap();
     let db = GLOBAL_FONTDB.lock().unwrap();
 
     Arc::new(usvgr::Tree::from_data(&svg_data, &usvgr::Options::default(), &db).unwrap())
@@ -145,7 +145,7 @@ pub fn render(name: &str) -> usize {
 
     // Save diff if needed.
     if pixels_d != 0 {
-        gen_diff(&name, &expected_data, rgba.as_slice()).unwrap();
+        gen_diff(name, &expected_data, rgba.as_slice()).unwrap();
     }
 
     pixels_d
@@ -254,7 +254,7 @@ pub fn render_node(name: &str, id: &str) -> usize {
 
     // Save diff if needed.
     if pixels_d != 0 {
-        gen_diff(&name, &expected_data, rgba.as_slice()).unwrap();
+        gen_diff(name, &expected_data, rgba.as_slice()).unwrap();
     }
 
     pixels_d
