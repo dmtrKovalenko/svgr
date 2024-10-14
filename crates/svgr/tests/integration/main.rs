@@ -44,6 +44,10 @@ static GLOBAL_IMAGE_DATA: Lazy<
         "../../../resources/image-63x61.png".to_owned(),
         load_image("tests/resources/image-63x61.png"),
     );
+    hash_map.insert(
+        "../../../resources/image-200x200-yellow.png".to_owned(),
+        load_image("tests/resources/image-200x200-yellow.png"),
+    );
 
     std::sync::Arc::new(hash_map)
 });
