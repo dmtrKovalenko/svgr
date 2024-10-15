@@ -1491,6 +1491,10 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for ImageRendering {
         match s {
             "auto" | "optimizeQuality" => Some(ImageRendering::OptimizeQuality),
             "optimizeSpeed" => Some(ImageRendering::OptimizeSpeed),
+            // The following can only appear in CSS/`style`. svgr keeps only two
+            // rendering modes, so they are mapped onto the closest one.
+            "smooth" | "high-quality" => Some(ImageRendering::OptimizeQuality),
+            "crisp-edges" | "pixelated" => Some(ImageRendering::OptimizeSpeed),
             _ => None,
         }
     }
