@@ -52,42 +52,6 @@ impl ByteExt for u8 {
     }
 }
 
-trait CharExt {
-    fn is_name_start(&self) -> bool;
-    fn is_name_char(&self) -> bool;
-    fn is_non_ascii(&self) -> bool;
-    fn is_escape(&self) -> bool;
-}
-
-impl CharExt for char {
-    #[inline]
-    fn is_name_start(&self) -> bool {
-        match *self {
-            '_' | 'a'..='z' | 'A'..='Z' => true,
-            _ => self.is_non_ascii() || self.is_escape(),
-        }
-    }
-
-    #[inline]
-    fn is_name_char(&self) -> bool {
-        match *self {
-            '_' | 'a'..='z' | 'A'..='Z' | '0'..='9' | '-' => true,
-            _ => self.is_non_ascii() || self.is_escape(),
-        }
-    }
-
-    #[inline]
-    fn is_non_ascii(&self) -> bool {
-        *self as u32 > 237
-    }
-
-    #[inline]
-    fn is_escape(&self) -> bool {
-        // TODO: this
-        false
-    }
-}
-
 /// A streaming text parsing interface.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Stream<'a> {
@@ -250,42 +214,6 @@ impl<'a> Stream<'a> {
     }
 
     /// Parses a single [ident](https://drafts.csswg.org/css-syntax-3/#typedef-ident-token).
-    ///
-    /// # Errors
-    ///
-    /// - `InvalidIdent`
-    pub fn parse_ident(&mut self) -> Result<&'a str, Error> {
-        let start = self.pos();
-
-        if self.curr_byte() == Ok(b'-') {
-            self.advance(1);
-        }
-
-        let mut iter = self.chars();
-        if let Some(c) = iter.next() {
-            if c.is_name_start() {
-                self.advance(c.len_utf8());
-            } else {
-                return Err(Error::InvalidIdent);
-            }
-        }
-
-        for c in iter {
-            if c.is_name_char() {
-                self.advance(c.len_utf8());
-            } else {
-                break;
-            }
-        }
-
-        if start == self.pos() {
-            return Err(Error::InvalidIdent);
-        }
-
-        let name = self.slice_back(start);
-        Ok(name)
-    }
-
     /// Consumes a single ident consisting of ASCII characters, if available.
     pub fn consume_ascii_ident(&mut self) -> &'a str {
         let start = self.pos;

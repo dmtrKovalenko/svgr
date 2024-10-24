@@ -78,9 +78,12 @@ pub(crate) fn convert_user_length(
 #[inline(never)]
 pub(crate) fn convert_list(node: SvgNode, aid: AId, state: &converter::State) -> Option<Vec<f32>> {
     match node.attribute_value(aid) {
-        Some(SvgAttributeValueRef::Float(length, _)) => {
-            Some(vec![convert_user_length(Length::new_number(length as f64), node, aid, state)])
-        }
+        Some(SvgAttributeValueRef::Float(length, _)) => Some(vec![convert_user_length(
+            Length::new_number(length as f64),
+            node,
+            aid,
+            state,
+        )]),
         Some(SvgAttributeValueRef::Length(length)) => {
             Some(vec![convert_user_length(length, node, aid, state)])
         }
@@ -92,7 +95,7 @@ pub(crate) fn convert_list(node: SvgNode, aid: AId, state: &converter::State) ->
 
             Some(num_list)
         }
-        _ => None
+        _ => None,
     }
 }
 

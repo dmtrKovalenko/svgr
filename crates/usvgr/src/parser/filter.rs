@@ -787,7 +787,7 @@ fn convert_flood(fe: SvgNode) -> Kind {
 }
 
 fn convert_gaussian_blur(fe: SvgNode, scale: Size, primitives: &[Primitive]) -> Kind {
-    let (std_dev_x, std_dev_y) = convert_std_dev_attr(fe, scale, (0.,0.));
+    let (std_dev_x, std_dev_y) = convert_std_dev_attr(fe, scale, (0., 0.));
     Kind::GaussianBlur(GaussianBlur {
         input: resolve_input(fe, AId::In, primitives),
         std_dev_x,
@@ -817,10 +817,8 @@ fn convert_std_dev_attr(
             };
 
             (std_dev_x, std_dev_y)
-        },
-        Some(SvgAttributeValueRef::Float(float, _)) => {
-            (float as f64, float as f64)
-        },
+        }
+        Some(SvgAttributeValueRef::Float(float, _)) => (float as f64, float as f64),
         _ => default,
     };
 

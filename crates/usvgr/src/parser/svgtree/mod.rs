@@ -379,13 +379,19 @@ macro_rules! impl_value_from_numeric {
     ($target:ty) => {
         impl From<$target> for SvgAttributeValue<'_> {
             fn from(v: $target) -> Self {
-                SvgAttributeValue::Float(v as f32, roxmltree::StringStorage::Owned(v.to_string().into()))
+                SvgAttributeValue::Float(
+                    v as f32,
+                    roxmltree::StringStorage::Owned(v.to_string().into()),
+                )
             }
         }
 
         impl From<&$target> for SvgAttributeValue<'_> {
             fn from(v: &$target) -> Self {
-                SvgAttributeValue::Float(*v as f32, roxmltree::StringStorage::Owned(v.to_string().into()))
+                SvgAttributeValue::Float(
+                    *v as f32,
+                    roxmltree::StringStorage::Owned(v.to_string().into()),
+                )
             }
         }
     };
@@ -1066,8 +1072,8 @@ fn is_non_inheritable(id: AId) -> bool {
 #[derive(Debug)]
 pub enum SvgAttributeValueRef<'a> {
     Str(&'a str),
-    // so the reason to have this is that sometimes values that will be stored as 
-    // ints in the the tree have to be requested as strings and it is easier for now to 
+    // so the reason to have this is that sometimes values that will be stored as
+    // ints in the the tree have to be requested as strings and it is easier for now to
     // convert them on flight than implement the type safety for the whole SVG spec
     // Int(i32),
     Float(f32, &'a str),
@@ -1171,16 +1177,14 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for Transform {
 #[derive(Debug, Clone, Copy)]
 pub enum MaybeTransform {
     Valid(Transform),
-    Invalid
+    Invalid,
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for MaybeTransform {
     fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
         let ts = match value {
             SvgAttributeValueRef::Transform(t) => t,
-            SvgAttributeValueRef::Str(text) => {
-                svgrtypes::Transform::from_str(text).ok()?
-            }
+            SvgAttributeValueRef::Str(text) => svgrtypes::Transform::from_str(text).ok()?,
             _ => return None,
         };
 
@@ -1200,7 +1204,6 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for MaybeTransform {
         }
     }
 }
-
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for svgrtypes::TransformOrigin {
     fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
