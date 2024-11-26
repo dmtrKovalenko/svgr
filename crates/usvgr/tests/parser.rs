@@ -29,6 +29,7 @@ fn stylesheet_injection() {
     <rect id='rect2' x='120' y='20' width='60' height='60' fill='green'/>
     <rect id='rect3' x='20' y='120' width='60' height='60' style='fill: green'/>
     <rect id='rect4' x='120' y='120' width='60' height='60'/>
+    <rect id='rect5' x='70' y='70' width='60' height='60' style='fill: green !important'/>
 </svg>
 ";
 
@@ -74,6 +75,78 @@ fn stylesheet_injection() {
     assert_eq!(
         third.fill().unwrap().paint(),
         &usvgr::Paint::Color(Color::new_rgb(0, 128, 0))
+    );
+
+    let usvgr::Node::Path(ref third) = &tree.root().children()[4] else {
+        unreachable!()
+    };
+    assert_eq!(
+        third.fill().unwrap().paint(),
+        &usvgr::Paint::Color(Color::new_rgb(0, 128, 0))
+    );
+}
+
+#[test]
+fn stylesheet_injection_with_important() {
+    let svg = "<svg id='svg1' viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>
+    <style>
+        #rect4 {
+            fill: green
+        }
+    </style>
+    <rect id='rect1' x='20' y='20' width='60' height='60'/>
+    <rect id='rect2' x='120' y='20' width='60' height='60' fill='green'/>
+    <rect id='rect3' x='20' y='120' width='60' height='60' style='fill: green'/>
+    <rect id='rect4' x='120' y='120' width='60' height='60'/>
+    <rect id='rect5' x='70' y='70' width='60' height='60' style='fill: green !important'/>
+</svg>
+";
+
+    let stylesheet = "rect { fill: red !important }".to_string();
+
+    let options = usvgr::Options {
+        style_sheet: Some(stylesheet),
+        ..usvgr::Options::default()
+    };
+
+    let fontdb = usvgr::fontdb::Database::new();
+    let tree = usvgr::Tree::from_str(&svg, &options, &fontdb).unwrap();
+
+    // All rects should be overriden, since we use `important`.
+    let usvgr::Node::Path(ref third) = &tree.root().children()[0] else {
+        unreachable!()
+    };
+    assert_eq!(
+        third.fill().unwrap().paint(),
+        &usvgr::Paint::Color(Color::new_rgb(255, 0, 0))
+    );
+    let usvgr::Node::Path(ref third) = &tree.root().children()[1] else {
+        unreachable!()
+    };
+    assert_eq!(
+        third.fill().unwrap().paint(),
+        &usvgr::Paint::Color(Color::new_rgb(255, 0, 0))
+    );
+    let usvgr::Node::Path(ref third) = &tree.root().children()[2] else {
+        unreachable!()
+    };
+    assert_eq!(
+        third.fill().unwrap().paint(),
+        &usvgr::Paint::Color(Color::new_rgb(255, 0, 0))
+    );
+    let usvgr::Node::Path(ref third) = &tree.root().children()[3] else {
+        unreachable!()
+    };
+    assert_eq!(
+        third.fill().unwrap().paint(),
+        &usvgr::Paint::Color(Color::new_rgb(255, 0, 0))
+    );
+    let usvgr::Node::Path(ref third) = &tree.root().children()[4] else {
+        unreachable!()
+    };
+    assert_eq!(
+        third.fill().unwrap().paint(),
+        &usvgr::Paint::Color(Color::new_rgb(255, 0, 0))
     );
 }
 
