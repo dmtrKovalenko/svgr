@@ -27,6 +27,12 @@ pub struct PreloadedImageData {
     pub id: String,
 }
 
+impl std::fmt::Display for PreloadedImageData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.id)
+    }
+}
+
 impl PreloadedImageData {
     /// Converts raw rgba pixmap source to the rgba source with blended semi transparent colors.
     pub fn blend_rgba_slice(rgba_slice: &[u8]) -> Vec<u8> {
