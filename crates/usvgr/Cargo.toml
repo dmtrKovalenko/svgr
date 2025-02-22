@@ -1,6 +1,6 @@
 [package]
 name = "usvgr"
-version = "0.43.3"
+version = "0.43.4"
 authors = ["Yevhenii Reizner <razrfalcon@gmail.com>"]
 keywords = ["svg"]
 license = "MPL-2.0"
@@ -22,7 +22,7 @@ base64 = "0.21" # for embedded images
 log = "0.4"
 pico-args = { version = "0.5", features = ["eq-separator"] }
 strict-num = "0.1.1"
-svgrtypes = { version = "0.43.3", path = "../svgrtypes" }
+svgrtypes = { version = "0.43.4", path = "../svgrtypes" }
 tiny-skia-path = "0.11.4"
 xmlwriter = "0.1"
 
