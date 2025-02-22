@@ -2,7 +2,7 @@ use std::f64;
 
 use quote::ToTokens;
 
-use crate::{Error, Stream};
+use crate::{tokens_helper::TokenizableNumber, Error, Stream};
 
 /// Representation of the [`<transform>`] type.
 ///
@@ -21,6 +21,12 @@ pub struct Transform {
 impl ToTokens for Transform {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let Transform { a, b, c, d, e, f } = self;
+        let a = TokenizableNumber(*a);
+        let b = TokenizableNumber(*b);
+        let c = TokenizableNumber(*c);
+        let d = TokenizableNumber(*d);
+        let e = TokenizableNumber(*e);
+        let f = TokenizableNumber(*f);
 
         tokens.extend(quote::quote! {
             svgrtypes::Transform {

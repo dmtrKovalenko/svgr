@@ -1,4 +1,4 @@
-use crate::{Error, Stream};
+use crate::{tokens_helper::TokenizableNumber, Error, Stream};
 
 /// List of all SVG angle units.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -35,6 +35,7 @@ pub struct Angle {
 impl quote::ToTokens for Angle {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let Self { number, unit } = self;
+        let number = TokenizableNumber(*number);
 
         quote::quote! {
             svgrtypes::Angle {

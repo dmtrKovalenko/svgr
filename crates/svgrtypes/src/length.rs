@@ -1,4 +1,4 @@
-use crate::{Error, Stream};
+use crate::{tokens_helper::TokenizableNumber, Error, Stream};
 
 /// List of all SVG length units.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -47,6 +47,7 @@ impl quote::ToTokens for LengthUnit {
 impl quote::ToTokens for Length {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let Self { number, unit } = self;
+        let number = TokenizableNumber(*number);
 
         quote::quote! {
             svgrtypes::Length {
