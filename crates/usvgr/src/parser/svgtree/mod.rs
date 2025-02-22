@@ -1072,10 +1072,9 @@ fn is_non_inheritable(id: AId) -> bool {
 #[derive(Debug)]
 pub enum SvgAttributeValueRef<'a> {
     Str(&'a str),
-    // so the reason to have this is that sometimes values that will be stored as
-    // ints in the the tree have to be requested as strings and it is easier for now to
-    // convert them on flight than implement the type safety for the whole SVG spec
-    // Int(i32),
+    // We store both string and float to avoid any potential conflict when the string
+    // attribute is represented as a number, storing static string is cheaper than 
+    // converting floats all the time
     Float(f32, &'a str),
     Length(svgrtypes::Length),
     Transform(svgrtypes::Transform),

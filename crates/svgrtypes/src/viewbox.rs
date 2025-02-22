@@ -1,4 +1,4 @@
-use crate::Stream;
+use crate::{tokens_helper::TokenizableNumber, Stream};
 
 /// List of possible [`ViewBox`] parsing errors.
 #[derive(Clone, Copy, Debug)]
@@ -44,6 +44,10 @@ pub struct ViewBox {
 impl quote::ToTokens for ViewBox {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let Self { x, y, w, h } = self;
+        let x = TokenizableNumber(*x);
+        let y = TokenizableNumber(*y);
+        let w = TokenizableNumber(*w);
+        let h = TokenizableNumber(*h);
 
         quote::quote! {
             svgrtypes::ViewBox {
