@@ -6,7 +6,7 @@
 [svgr](https://github.com/RazrFalcon/svgr) is an SVG rendering library.
 */
 
-#![forbid(unsafe_code)]
+// #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 #![allow(clippy::field_reassign_with_default)]
 #![allow(clippy::identity_op)]

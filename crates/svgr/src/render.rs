@@ -2,8 +2,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::OptionLog;
-
 /// General context for the rendering.
 pub struct Context {
     /// The max bounding box for the whole SVG.
@@ -84,7 +82,6 @@ fn render_group(
     cache: &mut crate::cache::SvgrCache,
 ) -> Option<()> {
     let transform = transform.pre_concat(group.transform());
-
     if !group.should_isolate() {
         render_nodes(group, ctx, transform, pixmap, cache);
     } else {
@@ -98,23 +95,14 @@ fn render_group(
                 bbox.width().ceil() as u32 + 4,
                 bbox.height().ceil() as u32 + 4,
             )?
-            // The bounding box for groups with filters is special and should not be expanded by 2px,
         } else {
-            // because it's already acting as a clipping region.
-            let bbox = bbox.to_int_rect();
-            // Make sure our filter region is not bigger than 4x the canvas size.
-            // This is required mainly to prevent huge filter regions that would tank the performance.
-            // It should not affect the final result in any way.
-            crate::geom::fit_to_rect(bbox, ctx.max_bbox)?
+            bbox.to_int_rect()
         };
 
-        let sub_pixmap = cache.with_subpixmap_cache(group, |cache| {
-            // Make sure our layer is not bigger than 4x the canvas size.
-            // This is required to prevent huge layers.
-            if group.filters().is_empty() {
-                ibbox = crate::geom::fit_to_rect(ibbox, ctx.max_bbox)?;
-            }
+        // The bounding box for groups with filters is special and should not be expanded by 2px,
+        ibbox = crate::geom::fit_to_rect(ibbox, ctx.max_bbox)?;
 
+        let sub_pixmap = cache.with_subpixmap_cache(group, ibbox.size(), |sub_pixmap, cache| {
             let shift_ts = {
                 // Original shift.
                 let mut dx = bbox.x();
@@ -129,26 +117,23 @@ fn render_group(
 
             let transform = shift_ts.pre_concat(transform);
 
-            let mut sub_pixmap = tiny_skia::Pixmap::new(ibbox.width(), ibbox.height())
-                .log_none(|| log::warn!("Failed to allocate a group layer for: {:?}.", ibbox))?;
-
             render_nodes(group, ctx, transform, &mut sub_pixmap.as_mut(), cache);
 
             if !group.filters().is_empty() {
                 for filter in group.filters() {
-                    crate::filter::apply(filter, transform, &mut sub_pixmap, cache);
+                    crate::filter::apply(filter, transform, sub_pixmap, cache);
                 }
-            }
+            };
 
             if let Some(clip_path) = group.clip_path() {
-                crate::clip::apply(clip_path, transform, &mut sub_pixmap, cache);
+                crate::clip::apply(clip_path, transform, sub_pixmap, cache);
             }
 
             if let Some(mask) = group.mask() {
-                crate::mask::apply(mask, ctx, transform, &mut sub_pixmap, cache);
+                crate::mask::apply(mask, ctx, transform, sub_pixmap, cache);
             }
 
-            Some((sub_pixmap, cache))
+            Some(())
         })?;
 
         let paint = tiny_skia::PixmapPaint {
@@ -160,7 +145,7 @@ fn render_group(
         pixmap.draw_pixmap(
             ibbox.x(),
             ibbox.y(),
-            sub_pixmap.as_ref().as_ref(),
+            sub_pixmap.as_ref(),
             &paint,
             tiny_skia::Transform::identity(),
             None,

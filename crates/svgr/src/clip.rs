@@ -2,7 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::{cache, render::Context};
+use tiny_skia::IntSize;
+
+use crate::{cache, render::Context, SvgrCache};
 
 pub fn apply(
     clip: &usvgr::ClipPath,
@@ -10,19 +12,28 @@ pub fn apply(
     pixmap: &mut tiny_skia::Pixmap,
     cache: &mut cache::SvgrCache,
 ) {
-    let mut clip_pixmap = tiny_skia::Pixmap::new(pixmap.width(), pixmap.height()).unwrap();
-    clip_pixmap.fill(tiny_skia::Color::BLACK);
+    let clip_pixmap = cache
+        .with_subpixmap_cache(
+            clip,
+            IntSize::from_wh(pixmap.width(), pixmap.height()).unwrap(),
+            |clip_pixmap, cache| {
+                clip_pixmap.fill(tiny_skia::Color::BLACK);
 
-    draw_children(
-        clip.root(),
-        tiny_skia::BlendMode::Clear,
-        transform.pre_concat(clip.transform()),
-        &mut clip_pixmap.as_mut(),
-        cache,
-    );
+                draw_children(
+                    clip.root(),
+                    tiny_skia::BlendMode::Clear,
+                    transform.pre_concat(clip.transform()),
+                    &mut clip_pixmap.as_mut(),
+                    cache,
+                );
+
+                Some(())
+            },
+        )
+        .expect("failed to allocate pixmap for clip");
 
     if let Some(clip) = clip.clip_path() {
-        apply(clip, transform, pixmap, cache);
+        apply(clip, transform, pixmap, &mut SvgrCache::none());
     }
 
     let mut mask = tiny_skia::Mask::from_pixmap(clip_pixmap.as_ref(), tiny_skia::MaskType::Alpha);
