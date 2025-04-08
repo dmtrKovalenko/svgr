@@ -1,7 +1,7 @@
 use once_cell::sync::Lazy;
 use rgb::{FromSlice, RGBA8};
 use std::{collections::HashMap, sync::Arc};
-use svgr::SvgrCache;
+use svgr::{PixmapPool, SvgrCache};
 use usvgr::fontdb;
 
 #[rustfmt::skip]
@@ -118,6 +118,7 @@ pub fn render(name: &str) -> usize {
         render_ts,
         &mut pixmap.as_mut(),
         &mut SvgrCache::none(),
+        &PixmapPool::new(),
         &ctx,
     );
 
@@ -173,6 +174,7 @@ pub fn render_extra_with_scale(name: &str, scale: f32) -> usize {
         render_ts,
         &mut pixmap.as_mut(),
         &mut SvgrCache::none(),
+        &PixmapPool::new(),
         &ctx,
     );
 
@@ -229,6 +231,7 @@ pub fn render_node(name: &str, id: &str) -> usize {
         tiny_skia::Transform::identity(),
         &mut pixmap.as_mut(),
         &mut SvgrCache::none(),
+        &PixmapPool::new(),
         &ctx,
     );
 

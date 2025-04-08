@@ -43,6 +43,7 @@ fn main() {
         render_ts,
         &mut pixmap.as_mut(),
         &mut SvgrCache::none(),
+        &mut svgr::PixmapPool::new(),
         &ctx,
     );
 

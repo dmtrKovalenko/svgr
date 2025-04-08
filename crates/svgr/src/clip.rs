@@ -2,27 +2,43 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::{cache, render::Context};
+use tiny_skia::IntSize;
+
+use crate::{cache, render::Context, PixmapPool, SvgrCache};
 
 pub fn apply(
     clip: &usvgr::ClipPath,
     transform: tiny_skia::Transform,
     pixmap: &mut tiny_skia::Pixmap,
     cache: &mut cache::SvgrCache,
+    pixmap_pool: &cache::PixmapPool,
 ) {
-    let mut clip_pixmap = tiny_skia::Pixmap::new(pixmap.width(), pixmap.height()).unwrap();
-    clip_pixmap.fill(tiny_skia::Color::BLACK);
+    let clip_pixmap = cache
+        .with_subpixmap_cache(
+            clip,
+            pixmap_pool,
+            IntSize::from_wh(pixmap.width(), pixmap.height()).unwrap(),
+            |mut clip_pixmap, cache| {
+                clip_pixmap.fill(tiny_skia::Color::BLACK);
 
-    draw_children(
-        clip.root(),
-        tiny_skia::BlendMode::Clear,
-        transform.pre_concat(clip.transform()),
-        &mut clip_pixmap.as_mut(),
-        cache,
-    );
+                draw_children(
+                    clip.root(),
+                    tiny_skia::BlendMode::Clear,
+                    transform.pre_concat(clip.transform()),
+                    &mut clip_pixmap.as_mut(),
+                    cache,
+                    pixmap_pool,
+                );
+
+                Some(clip_pixmap)
+            },
+        )
+        .expect("failed to allocate pixmap for clip");
 
     if let Some(clip) = clip.clip_path() {
-        apply(clip, transform, pixmap, cache);
+        // here we are handling the recurision on self, and while we hold the reference to the 
+        // cache lru instance this will OVERWRITE the existing pixmpa or cache entry  
+        apply(clip, transform, pixmap, &mut SvgrCache::none(), &PixmapPool::new());
     }
 
     let mut mask = tiny_skia::Mask::from_pixmap(clip_pixmap.as_ref(), tiny_skia::MaskType::Alpha);
@@ -36,6 +52,7 @@ fn draw_children(
     transform: tiny_skia::Transform,
     pixmap: &mut tiny_skia::PixmapMut,
     cache: &mut cache::SvgrCache,
+    pixmap_pool: &cache::PixmapPool,
 ) {
     for child in parent.children() {
         match child {
@@ -49,10 +66,17 @@ fn draw_children(
                     max_bbox: tiny_skia::IntRect::from_xywh(0, 0, 1, 1).unwrap(),
                 };
 
-                crate::path::fill_path(path, mode, &ctx, transform, pixmap, cache);
+                crate::path::fill_path(path, mode, &ctx, transform, pixmap, cache, pixmap_pool);
             }
             usvgr::Node::Text(ref text) => {
-                draw_children(text.flattened(), mode, transform, pixmap, cache);
+                draw_children(
+                    text.flattened(),
+                    mode,
+                    transform,
+                    pixmap,
+                    cache,
+                    pixmap_pool,
+                );
             }
             usvgr::Node::Group(ref group) => {
                 let transform = transform.pre_concat(group.transform());
@@ -61,9 +85,9 @@ fn draw_children(
                     // If a `clipPath` child also has a `clip-path`
                     // then we should render this child on a new canvas,
                     // clip it, and only then draw it to the `clipPath`.
-                    clip_group(group, clip, transform, pixmap, cache);
+                    clip_group(group, clip, transform, pixmap, cache, pixmap_pool);
                 } else {
-                    draw_children(group, mode, transform, pixmap, cache);
+                    draw_children(group, mode, transform, pixmap, cache, pixmap_pool);
                 }
             }
             _ => {}
@@ -77,8 +101,9 @@ fn clip_group(
     transform: tiny_skia::Transform,
     pixmap: &mut tiny_skia::PixmapMut,
     cache: &mut cache::SvgrCache,
+    pixmap_pool: &cache::PixmapPool,
 ) -> Option<()> {
-    let mut clip_pixmap = tiny_skia::Pixmap::new(pixmap.width(), pixmap.height()).unwrap();
+    let mut clip_pixmap = pixmap_pool.take_or_allocate(pixmap.width(), pixmap.height()).unwrap();
 
     draw_children(
         children,
@@ -86,8 +111,9 @@ fn clip_group(
         transform,
         &mut clip_pixmap.as_mut(),
         cache,
+        pixmap_pool,
     );
-    apply(clip, transform, &mut clip_pixmap, cache);
+    apply(clip, transform, &mut clip_pixmap, cache, pixmap_pool);
 
     let mut paint = tiny_skia::PixmapPaint::default();
     paint.blend_mode = tiny_skia::BlendMode::Xor;

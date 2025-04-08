@@ -6,6 +6,7 @@
 
 use std::path;
 
+use svgr::PixmapPool;
 use usvgr::fontdb;
 
 fn main() {
@@ -675,10 +676,18 @@ fn render_svg(args: &Args, tree: &usvgr::Tree) -> Result<tiny_skia::Pixmap, Stri
         }
 
         let mut cache = svgr::SvgrCache::none();
+        let pixmap_pool = svgr::PixmapPool::new();
         let ts = args.fit_to.fit_to_transform(tree.size().to_int_size());
 
         let ctx = svgr::Context::new_from_pixmap(&pixmap);
-        svgr::render_node(node, ts, &mut pixmap.as_mut(), &mut cache, &ctx);
+        svgr::render_node(
+            node,
+            ts,
+            &mut pixmap.as_mut(),
+            &mut cache,
+            &pixmap_pool,
+            &ctx,
+        );
 
         if args.export_area_page {
             // TODO: add offset support to render_node() so we would not need an additional pixmap
@@ -724,7 +733,14 @@ fn render_svg(args: &Args, tree: &usvgr::Tree) -> Result<tiny_skia::Pixmap, Stri
 
         let mut cache = svgr::SvgrCache::new(10);
         let ctx = svgr::Context::new_from_pixmap(&pixmap);
-        svgr::render(tree, ts, &mut pixmap.as_mut(), &mut cache, &ctx);
+        svgr::render(
+            tree,
+            ts,
+            &mut pixmap.as_mut(),
+            &mut cache,
+            &PixmapPool::new(),
+            &ctx,
+        );
 
         if args.export_area_drawing {
             trim_pixmap(tree, ts, &pixmap).unwrap_or(pixmap)

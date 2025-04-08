@@ -1,7 +1,8 @@
+use tiny_skia::IntSize;
+
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 use crate::{cache::SvgrCache, render::TinySkiaPixmapMutExt};
 use std::sync::Arc;
 
@@ -10,6 +11,7 @@ pub fn render(
     transform: tiny_skia::Transform,
     pixmap: &mut tiny_skia::PixmapMut,
     cache: &mut crate::cache::SvgrCache,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) {
     if image.visibility() != usvgr::Visibility::Visible {
         return;
@@ -22,6 +24,7 @@ pub fn render(
         image.rendering_mode(),
         pixmap,
         cache,
+        pixmap_pool,
     );
 }
 
@@ -32,13 +35,22 @@ pub fn render_inner(
     #[allow(unused_variables)] rendering_mode: usvgr::ImageRendering,
     pixmap: &mut tiny_skia::PixmapMut,
     cache: &mut crate::cache::SvgrCache,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) {
     match image_kind {
         usvgr::ImageKind::SVG {
             ref tree,
             ref original_href,
         } => {
-            render_vector(tree, original_href, &view_box, transform, pixmap, cache);
+            render_vector(
+                tree,
+                original_href,
+                &view_box,
+                transform,
+                pixmap,
+                cache,
+                pixmap_pool,
+            );
         }
         usvgr::ImageKind::DATA(ref data) => {
             draw_raster(data, view_box, rendering_mode, transform, pixmap);
@@ -53,35 +65,44 @@ fn render_vector(
     transform: tiny_skia::Transform,
     pixmap: &mut tiny_skia::PixmapMut,
     cache: &mut crate::cache::SvgrCache,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) -> Option<()> {
-    let width = pixmap.width();
-    let height = pixmap.height();
-    let sub_pixamp = cache.with_subpixmap_cache(&original_href, |cache| {
-        let img_size = tree.size().to_int_size();
-        let (ts, clip) = crate::geom::view_box_to_transform_with_clip(view_box, img_size);
+    let sub_pixmap = cache.with_subpixmap_cache(
+        &original_href,
+        pixmap_pool,
+        IntSize::from_wh(pixmap.width(), pixmap.height()).unwrap(),
+        |mut sub_pixmap, _| {
+            let img_size = tree.size().to_int_size();
+            let (ts, clip) = crate::geom::view_box_to_transform_with_clip(view_box, img_size);
 
-        let mut sub_pixmap = tiny_skia::Pixmap::new(width, height).unwrap();
+            let source_transform = transform;
+            let transform = transform.pre_concat(ts);
+            let ctx = crate::render::Context::new_from_pixmap(&sub_pixmap);
 
-        let source_transform = transform;
-        let transform = transform.pre_concat(ts);
-        let ctx = crate::render::Context::new_from_pixmap(&sub_pixmap);
+            let pixmap_mut = &mut sub_pixmap.as_mut();
+            crate::render(
+                tree,
+                transform,
+                pixmap_mut,
+                &mut SvgrCache::none(),
+                pixmap_pool,
+                &ctx,
+            );
 
-        let pixmap_mut = &mut sub_pixmap.as_mut();
-        crate::render(tree, transform, pixmap_mut, &mut SvgrCache::none(), &ctx);
+            if let Some(mask) =
+                clip.and_then(|clip| pixmap_mut.create_rect_mask(source_transform, clip.to_rect()))
+            {
+                pixmap_mut.apply_mask(&mask);
+            }
 
-        if let Some(mask) =
-            clip.and_then(|clip| pixmap_mut.create_rect_mask(source_transform, clip.to_rect()))
-        {
-            pixmap_mut.apply_mask(&mask);
-        }
-
-        Some((sub_pixmap, cache))
-    })?;
+            Some(sub_pixmap)
+        },
+    )?;
 
     pixmap.draw_pixmap(
         0,
         0,
-        sub_pixamp.as_ref().as_ref(),
+        sub_pixmap.as_ref(),
         &tiny_skia::PixmapPaint::default(),
         tiny_skia::Transform::identity(),
         None,
