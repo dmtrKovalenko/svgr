@@ -1,5 +1,5 @@
-/// Newtype implementing correct to tokens for the numbes that might 
-/// be negative to avoid LSP errors because rust analyzer is not able to 
+/// Newtype implementing correct to tokens for the numbes that might
+/// be negative to avoid LSP errors because rust analyzer is not able to
 /// correctly align the additional - token leading to the unnecessary lsp errors.
 #[derive(Debug, Clone, Copy)]
 pub struct TokenizableNumber(pub f64);

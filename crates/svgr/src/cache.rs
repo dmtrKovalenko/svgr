@@ -1,4 +1,5 @@
 use lru::LruCache;
+use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
 use std::{
     collections::hash_map::Entry,
@@ -26,7 +27,6 @@ struct SvgrCacheInternal<HashBuilder: BuildHasher = ahash::RandomState> {
 #[derive(Debug)]
 pub struct SvgrCache<RandomState: BuildHasher = ahash::RandomState> {
     cache: Option<SvgrCacheInternal<RandomState>>,
-    pixmap_pool: PixmapPool<RandomState>,
 }
 
 impl SvgrCache {
@@ -34,46 +34,68 @@ impl SvgrCache {
     /// If capacity <= 0 then cache is disabled and this struct does not allocate.
     /// Uses `ahash` as a hasher, if you want to specify custom hasher user `new_with_hasher` fn.
     pub fn new(size: usize) -> Self {
-        Self::new_with_hasher(size, ahash::RandomState::default())
+        Self::new_sized(size)
     }
-}
+} 
 
+/// Pixmap ring buffer required for reusing allocation when creating a lot of inner pixmaps
 #[derive(Debug)]
-struct PixmapPool<HashBuilder: BuildHasher = ahash::RandomState> {
+pub struct PixmapPool<HashBuilder: BuildHasher = ahash::RandomState> {
     // Store pixmaps by size for efficient reuse
-    buffers: HashMap<(u32, u32), Pixmap, HashBuilder>,
+    buffers: RefCell<HashMap<(u32, u32), Pixmap, HashBuilder>>,
 }
 
 impl<THashBuilder: BuildHasher + Default> PixmapPool<THashBuilder> {
-    fn new() -> Self {
+    /// Create new unbounded pixmap pool
+    pub fn new() -> Self {
         Self {
-            buffers: HashMap::with_hasher(THashBuilder::default()),
+            buffers: RefCell::new(HashMap::with_hasher(THashBuilder::default())),
         }
     }
 
-    fn get_or_allocate(&mut self, width: u32, height: u32) -> Option<&mut Pixmap> {
-        match self.buffers.entry((width, height)) {
+    #[allow(unused)]
+    pub(crate) fn get_or_allocate(&self, width: u32, height: u32) -> Option<RefMut<Pixmap>> {
+        let mut buffers = self.buffers.borrow_mut();
+
+        match buffers.entry((width, height)) {
             Entry::Occupied(pixmap) => {
                 let existing = pixmap.into_mut();
                 existing.data_mut().fill(0);
 
-                Some(existing)
+                // Drop the borrow_mut before creating a new one
+                drop(buffers);
+
+                // Create a reference to the specific pixmap
+                Some(RefMut::map(self.buffers.borrow_mut(), |map| {
+                    map.get_mut(&(width, height)).unwrap()
+                }))
             }
             Entry::Vacant(vacant_entry) => {
                 let new_pixmap = Pixmap::new(width, height).log_none(|| {
                     log::warn!("Failed to allocate a group layer for sub pixmap for hashing")
                 })?;
 
-                Some(vacant_entry.insert(new_pixmap))
+                vacant_entry.insert(new_pixmap);
+
+                // Drop the borrow_mut before creating a new one
+                drop(buffers);
+
+                // Create a reference to the specific pixmap
+                Some(RefMut::map(self.buffers.borrow_mut(), |map| {
+                    map.get_mut(&(width, height)).unwrap()
+                }))
             }
         }
     }
 
-    fn take_or_create_new(&mut self, width: u32, height: u32) -> Option<Pixmap> {
-        match self.buffers.entry((width, height)) {
+    pub(crate) fn take_or_allocate(&self, width: u32, height: u32) -> Option<Pixmap> {
+        let mut buffers = self.buffers.borrow_mut();
+
+        match buffers.entry((width, height)) {
             Entry::Occupied(pixmap) => {
                 let mut existing = pixmap.remove_entry().1;
                 existing.data_mut().fill(0);
+
                 Some(existing)
             }
             Entry::Vacant(_) => Pixmap::new(width, height).log_none(|| {
@@ -82,30 +104,38 @@ impl<THashBuilder: BuildHasher + Default> PixmapPool<THashBuilder> {
         }
     }
 
-    fn release(&mut self, pixmap: Pixmap) {
+    pub(crate) fn release<'a>(&'a self, pixmap: Pixmap) -> &'a Pixmap {
         let size_key = (pixmap.width(), pixmap.height());
-        self.buffers.entry(size_key).or_insert(pixmap);
+        let mut buffers = self.buffers.borrow_mut();
+
+        // Insert the pixmap and get a reference to it
+        let entry = buffers.entry(size_key).insert_entry(pixmap);
+        let owned_pixmap = entry.get();
+
+        // We need to extend the lifetime of the pixmap becuase we don't want to be bound to the 
+        // refcell this is safe because we always know that pixamp will be present in the buffer
+        // no matter what, the only potential issue might be realted to the recursive writes 
+        // (if during the lifetime of this reference someone will write something)
+        unsafe {
+            std::mem::transmute::<&Pixmap, &'a Pixmap>(owned_pixmap)
+        }
     }
 }
 
 impl<THashBuilder: BuildHasher + Default> SvgrCache<THashBuilder> {
     /// Creates a no cache value. Basically an Option::None.
     pub fn none() -> Self {
-        Self {
-            cache: None,
-            pixmap_pool: PixmapPool::new(),
-        }
+        Self { cache: None }
     }
 
     /// Creates a new cache with the specified capacity.
     /// If capacity <= 0 then cache is disabled.
-    pub fn new_with_hasher(size: usize, hasher: THashBuilder) -> Self {
+    pub fn new_sized(size: usize) -> Self {
         if size > 0 {
             Self {
-                pixmap_pool: PixmapPool::new(),
                 cache: Some(SvgrCacheInternal {
                     lru: LruCache::new(std::num::NonZeroUsize::new(size).unwrap()),
-                    hash_builder: hasher,
+                    hash_builder: THashBuilder::default(),
                 }),
             }
         } else {
@@ -126,42 +156,36 @@ impl<THashBuilder: BuildHasher + Default> SvgrCache<THashBuilder> {
     }
 
     /// Creates sub pixmap that will be cached itself within a canvas cache. Guarantees empty canvas within closure.  
-    pub(crate) fn with_subpixmap_cache<F: FnOnce(&mut Pixmap, &mut Self) -> Option<()>>(
-        &mut self,
+    pub(crate) fn with_subpixmap_cache<'a, F: FnOnce(Pixmap, &mut Self) -> Option<Pixmap>>(
+        &'a mut self,
         node: &impl Hash,
-        bbox: IntSize,
+        pixmap_pool: &'a PixmapPool,
+        size: IntSize,
         f: F,
-    ) -> Option<&Pixmap> {
+    ) -> Option<&'a Pixmap> {
         if self.cache.is_none() {
-            let pixmap_ref = self
-                .pixmap_pool
-                .get_or_allocate(bbox.width(), bbox.height())?;
-
-            f(pixmap_ref, &mut Self::none())?;
-            return Some(pixmap_ref);
+            let pixmap = pixmap_pool.take_or_allocate(size.width(), size.height())?;
+            let pixmap = { f(pixmap, &mut Self::none()) }?;
+            let value = pixmap_pool.release(pixmap);
+            return Some(value);
         }
 
         let hash = self.hash(node)?;
-        let mut cache_ref = self;
 
-        if !cache_ref.lru()?.contains(&hash) {
-            let mut pixmap = cache_ref
-                .pixmap_pool
-                .take_or_create_new(bbox.width(), bbox.height())?;
+        if !self.lru()?.contains(&hash) {
+            let pixmap = pixmap_pool.take_or_allocate(size.width(), size.height())?;
 
-            {
-                f(&mut pixmap, &mut cache_ref)?
-            };
+            let pixmap = { f(pixmap, self) }?;
 
             // we basically passing down the mutable ref and getting it back
             // this is a primitive way to achieve recurisve mutable borrowing
             // without any overhead of Rc or RefCell
-            if let Some((_, cache_back)) = cache_ref.lru()?.push(hash, pixmap) {
-                cache_ref.pixmap_pool.release(cache_back);
+            if let Some((_, cache_back)) = self.lru()?.push(hash, pixmap) {
+                pixmap_pool.release(cache_back);
             }
         }
 
-        let pixmap = cache_ref.lru()?.peek(&hash)?;
+        let pixmap = self.lru()?.peek(&hash)?;
         return Some(pixmap);
     }
 }

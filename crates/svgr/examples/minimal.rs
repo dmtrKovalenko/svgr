@@ -1,3 +1,4 @@
+use svgr::{PixmapPool, SvgrCache};
 use usvgr::fontdb;
 
 fn main() {
@@ -23,13 +24,13 @@ fn main() {
 
     let pixmap_size = tree.size().to_int_size();
     let mut pixmap = tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).unwrap();
-    let mut cache = svgr::SvgrCache::none();
     let ctx = svgr::Context::new_from_pixmap(&pixmap);
     svgr::render(
         &tree,
         tiny_skia::Transform::default(),
         &mut pixmap.as_mut(),
-        &mut cache,
+        &mut SvgrCache::none(),
+        &PixmapPool::new(),
         &ctx,
     );
     pixmap.save_png(&args[2]).unwrap();

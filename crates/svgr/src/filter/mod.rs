@@ -341,8 +341,9 @@ pub fn apply(
     ts: tiny_skia::Transform,
     source: &mut tiny_skia::Pixmap,
     cache: &mut crate::cache::SvgrCache,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) {
-    let result = apply_inner(filter, ts, source, cache);
+    let result = apply_inner(filter, ts, source, cache, pixmap_pool);
     let result = result.and_then(|image| apply_to_canvas(image, source));
 
     // Clear on error.
@@ -364,6 +365,7 @@ fn apply_inner(
     ts: usvgr::Transform,
     source: &mut tiny_skia::Pixmap,
     cache: &mut crate::cache::SvgrCache,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) -> Result<Image, Error> {
     let region = filter
         .rect()
@@ -420,7 +422,9 @@ fn apply_inner(
                 let input = get_input(fe.input(), region, source, &results)?;
                 apply_tile(input, region)
             }
-            usvgr::filter::Kind::Image(ref fe) => apply_image(fe, region, subregion, ts, cache),
+            usvgr::filter::Kind::Image(ref fe) => {
+                apply_image(fe, region, subregion, ts, cache, pixmap_pool)
+            }
             usvgr::filter::Kind::ComponentTransfer(ref fe) => {
                 let input = get_input(fe.input(), region, source, &results)?;
                 apply_component_transfer(fe, cs, input)
@@ -868,6 +872,7 @@ fn apply_image(
     subregion: IntRect,
     ts: usvgr::Transform,
     cache: &mut crate::cache::SvgrCache,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) -> Result<Image, Error> {
     let mut pixmap = tiny_skia::Pixmap::try_create(region.width(), region.height())?;
 
@@ -894,6 +899,7 @@ fn apply_image(
                 fe.rendering_mode(),
                 &mut pixmap.as_mut(),
                 cache,
+                pixmap_pool,
             );
         }
         usvgr::filter::ImageKind::Use(ref node) => {
@@ -913,7 +919,14 @@ fn apply_image(
                     .unwrap(),
             };
 
-            crate::render::render_nodes(node, &ctx, transform, &mut pixmap.as_mut(), cache);
+            crate::render::render_nodes(
+                node,
+                &ctx,
+                transform,
+                &mut pixmap.as_mut(),
+                cache,
+                pixmap_pool,
+            );
         }
     }
 

@@ -1073,7 +1073,7 @@ fn is_non_inheritable(id: AId) -> bool {
 pub enum SvgAttributeValueRef<'a> {
     Str(&'a str),
     // We store both string and float to avoid any potential conflict when the string
-    // attribute is represented as a number, storing static string is cheaper than 
+    // attribute is represented as a number, storing static string is cheaper than
     // converting floats all the time
     Float(f32, &'a str),
     Length(svgrtypes::Length),

@@ -4,7 +4,7 @@
 
 use tiny_skia::IntSize;
 
-use crate::{render::Context, SvgrCache};
+use crate::{render::Context, PixmapPool, SvgrCache};
 
 pub fn apply(
     mask: &usvgr::Mask,
@@ -12,6 +12,7 @@ pub fn apply(
     transform: tiny_skia::Transform,
     pixmap: &mut tiny_skia::Pixmap,
     cache: &mut crate::cache::SvgrCache,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) {
     if mask.root().children().is_empty() {
         pixmap.fill(tiny_skia::Color::TRANSPARENT);
@@ -21,8 +22,9 @@ pub fn apply(
     let mask_pixmap = cache
         .with_subpixmap_cache(
             mask,
+            pixmap_pool,
             IntSize::from_wh(pixmap.width(), pixmap.height()).unwrap(),
-            |mask_pixmap, cache| {
+            |mut mask_pixmap, cache| {
                 // TODO: only when needed
                 // Mask has to be clipped by mask.region
                 let mut alpha_mask = tiny_skia::Mask::new(pixmap.width(), pixmap.height()).unwrap();
@@ -39,17 +41,27 @@ pub fn apply(
                     transform,
                     &mut mask_pixmap.as_mut(),
                     cache,
+                    pixmap_pool,
                 );
 
                 mask_pixmap.apply_mask(&alpha_mask);
 
-                Some(())
+                Some(mask_pixmap)
             },
         )
         .expect("failed to allocate pixmap for mask");
 
     if let Some(mask) = mask.mask() {
-        self::apply(mask, ctx, transform, pixmap, &mut SvgrCache::none());
+        // here we are handling the recurision on self, and while we hold the reference to the 
+        // cache lru instance this will OVERWRITE the existing pixmpa or cache entry  
+        self::apply(
+            mask,
+            ctx,
+            transform,
+            pixmap,
+            &mut SvgrCache::none(),
+            &PixmapPool::new(),
+        );
     }
 
     let mask_type = match mask.kind() {

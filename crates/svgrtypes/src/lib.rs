@@ -79,10 +79,10 @@ mod paint_order;
 mod path;
 mod points;
 mod stream;
+mod tokens_helper;
 mod transform;
 mod transform_origin;
 mod viewbox;
-mod tokens_helper;
 
 use crate::stream::{ByteExt, Stream};
 

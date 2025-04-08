@@ -26,13 +26,13 @@ fn main() {
     let pixmap_size = tree.size().to_int_size();
     let mut pixmap = tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).unwrap();
 
-    let mut cache = svgr::SvgrCache::new(10);
     let ctx = svgr::Context::new_from_pixmap(&pixmap);
     svgr::render(
         &tree,
         tiny_skia::Transform::default(),
         &mut pixmap.as_mut(),
-        &mut cache,
+        &mut svgr::SvgrCache::new(10),
+        &svgr::PixmapPool::new(),
         &ctx,
     );
 

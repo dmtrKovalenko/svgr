@@ -11,6 +11,7 @@ pub fn render(
     transform: tiny_skia::Transform,
     pixmap: &mut tiny_skia::PixmapMut,
     cache: &mut crate::cache::SvgrCache,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) {
     if image.visibility() != usvgr::Visibility::Visible {
         return;
@@ -23,6 +24,7 @@ pub fn render(
         image.rendering_mode(),
         pixmap,
         cache,
+        pixmap_pool,
     );
 }
 
@@ -33,13 +35,22 @@ pub fn render_inner(
     #[allow(unused_variables)] rendering_mode: usvgr::ImageRendering,
     pixmap: &mut tiny_skia::PixmapMut,
     cache: &mut crate::cache::SvgrCache,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) {
     match image_kind {
         usvgr::ImageKind::SVG {
             ref tree,
             ref original_href,
         } => {
-            render_vector(tree, original_href, &view_box, transform, pixmap, cache);
+            render_vector(
+                tree,
+                original_href,
+                &view_box,
+                transform,
+                pixmap,
+                cache,
+                pixmap_pool,
+            );
         }
         usvgr::ImageKind::DATA(ref data) => {
             draw_raster(data, view_box, rendering_mode, transform, pixmap);
@@ -54,11 +65,13 @@ fn render_vector(
     transform: tiny_skia::Transform,
     pixmap: &mut tiny_skia::PixmapMut,
     cache: &mut crate::cache::SvgrCache,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) -> Option<()> {
     let sub_pixmap = cache.with_subpixmap_cache(
         &original_href,
+        pixmap_pool,
         IntSize::from_wh(pixmap.width(), pixmap.height()).unwrap(),
-        |sub_pixmap, _| {
+        |mut sub_pixmap, _| {
             let img_size = tree.size().to_int_size();
             let (ts, clip) = crate::geom::view_box_to_transform_with_clip(view_box, img_size);
 
@@ -67,7 +80,14 @@ fn render_vector(
             let ctx = crate::render::Context::new_from_pixmap(&sub_pixmap);
 
             let pixmap_mut = &mut sub_pixmap.as_mut();
-            crate::render(tree, transform, pixmap_mut, &mut SvgrCache::none(), &ctx);
+            crate::render(
+                tree,
+                transform,
+                pixmap_mut,
+                &mut SvgrCache::none(),
+                pixmap_pool,
+                &ctx,
+            );
 
             if let Some(mask) =
                 clip.and_then(|clip| pixmap_mut.create_rect_mask(source_transform, clip.to_rect()))
@@ -75,7 +95,7 @@ fn render_vector(
                 pixmap_mut.apply_mask(&mask);
             }
 
-            Some(())
+            Some(sub_pixmap)
         },
     )?;
 

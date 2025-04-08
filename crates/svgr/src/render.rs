@@ -38,9 +38,10 @@ pub fn render_nodes(
     transform: tiny_skia::Transform,
     pixmap: &mut tiny_skia::PixmapMut,
     cache: &mut crate::cache::SvgrCache,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) {
     for node in parent.children() {
-        render_node(node, ctx, transform, pixmap, cache);
+        render_node(node, ctx, transform, pixmap, cache, pixmap_pool);
     }
 }
 
@@ -50,10 +51,11 @@ pub fn render_node(
     transform: tiny_skia::Transform,
     pixmap: &mut tiny_skia::PixmapMut,
     cache: &mut crate::cache::SvgrCache,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) {
     match node {
         usvgr::Node::Group(ref group) => {
-            render_group(group, ctx, transform, pixmap, cache);
+            render_group(group, ctx, transform, pixmap, cache, pixmap_pool);
         }
         usvgr::Node::Path(ref path) => {
             crate::path::render(
@@ -63,13 +65,14 @@ pub fn render_node(
                 transform,
                 pixmap,
                 cache,
+                pixmap_pool,
             );
         }
         usvgr::Node::Image(ref image) => {
-            crate::image::render(image, transform, pixmap, cache);
+            crate::image::render(image, transform, pixmap, cache, pixmap_pool);
         }
         usvgr::Node::Text(ref text) => {
-            render_group(text.flattened(), ctx, transform, pixmap, cache);
+            render_group(text.flattened(), ctx, transform, pixmap, cache, pixmap_pool);
         }
     }
 }
@@ -80,10 +83,11 @@ fn render_group(
     transform: tiny_skia::Transform,
     pixmap: &mut tiny_skia::PixmapMut,
     cache: &mut crate::cache::SvgrCache,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) -> Option<()> {
     let transform = transform.pre_concat(group.transform());
     if !group.should_isolate() {
-        render_nodes(group, ctx, transform, pixmap, cache);
+        render_nodes(group, ctx, transform, pixmap, cache, pixmap_pool);
     } else {
         let bbox = group.layer_bounding_box().transform(transform)?;
         let mut ibbox = if group.filters().is_empty() {
@@ -102,39 +106,57 @@ fn render_group(
         // The bounding box for groups with filters is special and should not be expanded by 2px,
         ibbox = crate::geom::fit_to_rect(ibbox, ctx.max_bbox)?;
 
-        let sub_pixmap = cache.with_subpixmap_cache(group, ibbox.size(), |sub_pixmap, cache| {
-            let shift_ts = {
-                // Original shift.
-                let mut dx = bbox.x();
-                let mut dy = bbox.y();
+        let sub_pixmap = cache.with_subpixmap_cache(
+            group,
+            pixmap_pool,
+            ibbox.size(),
+            |mut sub_pixmap, cache| {
+                let shift_ts = {
+                    // Original shift.
+                    let mut dx = bbox.x();
+                    let mut dy = bbox.y();
 
-                // Account for subpixel positioned layers.
-                dx -= bbox.x() - ibbox.x() as f32;
-                dy -= bbox.y() - ibbox.y() as f32;
+                    // Account for subpixel positioned layers.
+                    dx -= bbox.x() - ibbox.x() as f32;
+                    dy -= bbox.y() - ibbox.y() as f32;
 
-                tiny_skia::Transform::from_translate(-dx, -dy)
-            };
+                    tiny_skia::Transform::from_translate(-dx, -dy)
+                };
 
-            let transform = shift_ts.pre_concat(transform);
+                let transform = shift_ts.pre_concat(transform);
 
-            render_nodes(group, ctx, transform, &mut sub_pixmap.as_mut(), cache);
+                render_nodes(
+                    group,
+                    ctx,
+                    transform,
+                    &mut sub_pixmap.as_mut(),
+                    cache,
+                    pixmap_pool,
+                );
 
-            if !group.filters().is_empty() {
-                for filter in group.filters() {
-                    crate::filter::apply(filter, transform, sub_pixmap, cache);
+                if !group.filters().is_empty() {
+                    for filter in group.filters() {
+                        crate::filter::apply(
+                            filter,
+                            transform,
+                            &mut sub_pixmap,
+                            cache,
+                            pixmap_pool,
+                        );
+                    }
+                };
+
+                if let Some(clip_path) = group.clip_path() {
+                    crate::clip::apply(clip_path, transform, &mut sub_pixmap, cache, pixmap_pool);
                 }
-            };
 
-            if let Some(clip_path) = group.clip_path() {
-                crate::clip::apply(clip_path, transform, sub_pixmap, cache);
-            }
+                if let Some(mask) = group.mask() {
+                    crate::mask::apply(mask, ctx, transform, &mut sub_pixmap, cache, pixmap_pool);
+                }
 
-            if let Some(mask) = group.mask() {
-                crate::mask::apply(mask, ctx, transform, sub_pixmap, cache);
-            }
-
-            Some(())
-        })?;
+                Some(sub_pixmap)
+            },
+        )?;
 
         let paint = tiny_skia::PixmapPaint {
             opacity: group.opacity().get(),

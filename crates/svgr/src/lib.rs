@@ -41,12 +41,13 @@ pub fn render(
     transform: tiny_skia::Transform,
     pixmap: &mut tiny_skia::PixmapMut,
     cache: &mut cache::SvgrCache,
+    pixmap_pool: &cache::PixmapPool,
     ctx: &render::Context,
 ) {
     let ts = tree.view_box().to_transform(tree.size());
     let root_transform = transform.pre_concat(ts);
 
-    render::render_nodes(tree.root(), ctx, root_transform, pixmap, cache);
+    render::render_nodes(tree.root(), ctx, root_transform, pixmap, cache, pixmap_pool);
 }
 
 /// Renders a node onto the pixmap.
@@ -64,12 +65,13 @@ pub fn render_node(
     mut transform: tiny_skia::Transform,
     pixmap: &mut tiny_skia::PixmapMut,
     cache: &mut cache::SvgrCache,
+    pixmap_pool: &cache::PixmapPool,
     ctx: &render::Context,
 ) -> Option<()> {
     let bbox = node.abs_layer_bounding_box()?;
     transform = transform.pre_translate(-bbox.x(), -bbox.y());
 
-    render::render_node(node, ctx, transform, pixmap, cache);
+    render::render_node(node, ctx, transform, pixmap, cache, pixmap_pool);
     Some(())
 }
 
