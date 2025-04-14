@@ -22,6 +22,7 @@ pub fn apply(
     let mask_pixmap = cache
         .with_subpixmap_cache(
             mask,
+            transform,
             pixmap_pool,
             IntSize::from_wh(pixmap.width(), pixmap.height()).unwrap(),
             |mut mask_pixmap, cache| {
@@ -52,8 +53,8 @@ pub fn apply(
         .expect("failed to allocate pixmap for mask");
 
     if let Some(mask) = mask.mask() {
-        // here we are handling the recurision on self, and while we hold the reference to the 
-        // cache lru instance this will OVERWRITE the existing pixmpa or cache entry  
+        // here we are handling the recurision on self, and while we hold the reference to the
+        // cache lru instance this will OVERWRITE the existing pixmpa or cache entry
         self::apply(
             mask,
             ctx,

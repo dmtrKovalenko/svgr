@@ -36,7 +36,7 @@ impl SvgrCache {
     pub fn new(size: usize) -> Self {
         Self::new_sized(size)
     }
-} 
+}
 
 /// Pixmap ring buffer required for reusing allocation when creating a lot of inner pixmaps
 #[derive(Debug)]
@@ -112,13 +112,11 @@ impl<THashBuilder: BuildHasher + Default> PixmapPool<THashBuilder> {
         let entry = buffers.entry(size_key).insert_entry(pixmap);
         let owned_pixmap = entry.get();
 
-        // We need to extend the lifetime of the pixmap becuase we don't want to be bound to the 
+        // We need to extend the lifetime of the pixmap becuase we don't want to be bound to the
         // refcell this is safe because we always know that pixamp will be present in the buffer
-        // no matter what, the only potential issue might be realted to the recursive writes 
+        // no matter what, the only potential issue might be realted to the recursive writes
         // (if during the lifetime of this reference someone will write something)
-        unsafe {
-            std::mem::transmute::<&Pixmap, &'a Pixmap>(owned_pixmap)
-        }
+        unsafe { std::mem::transmute::<&Pixmap, &'a Pixmap>(owned_pixmap) }
     }
 }
 
@@ -147,11 +145,20 @@ impl<THashBuilder: BuildHasher + Default> SvgrCache<THashBuilder> {
         self.cache.as_mut().map(|cache| &mut cache.lru)
     }
 
-    fn hash(&self, node: &impl Hash) -> Option<u64> {
+    fn hash(
+        &self,
+        size: IntSize,
+        transform: tiny_skia::Transform,
+        node: &impl Hash,
+    ) -> Option<u64> {
+        use usvgr::hashers::CustomHash;
         let cache = self.cache.as_ref()?;
 
         let mut hasher = cache.hash_builder.build_hasher();
         node.hash(&mut hasher);
+        size.width().hash(&mut hasher);
+        size.height().hash(&mut hasher);
+        transform.custom_hash(&mut hasher);
         Some(Hasher::finish(&hasher))
     }
 
@@ -159,18 +166,19 @@ impl<THashBuilder: BuildHasher + Default> SvgrCache<THashBuilder> {
     pub(crate) fn with_subpixmap_cache<'a, F: FnOnce(Pixmap, &mut Self) -> Option<Pixmap>>(
         &'a mut self,
         node: &impl Hash,
+        transform: tiny_skia::Transform,
         pixmap_pool: &'a PixmapPool,
         size: IntSize,
         f: F,
     ) -> Option<&'a Pixmap> {
         if self.cache.is_none() {
             let pixmap = pixmap_pool.take_or_allocate(size.width(), size.height())?;
-            let pixmap = { f(pixmap, &mut Self::none()) }?;
+            let pixmap = { f(pixmap, self) }?;
             let value = pixmap_pool.release(pixmap);
             return Some(value);
         }
 
-        let hash = self.hash(node)?;
+        let hash = self.hash(size, transform, node)?;
 
         if !self.lru()?.contains(&hash) {
             let pixmap = pixmap_pool.take_or_allocate(size.width(), size.height())?;

@@ -2,9 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use tiny_skia::IntSize;
-
 use crate::{cache, render::Context, PixmapPool, SvgrCache};
+use tiny_skia::IntSize;
 
 pub fn apply(
     clip: &usvgr::ClipPath,
@@ -16,6 +15,7 @@ pub fn apply(
     let clip_pixmap = cache
         .with_subpixmap_cache(
             clip,
+            transform,
             pixmap_pool,
             IntSize::from_wh(pixmap.width(), pixmap.height()).unwrap(),
             |mut clip_pixmap, cache| {
@@ -27,7 +27,7 @@ pub fn apply(
                     transform.pre_concat(clip.transform()),
                     &mut clip_pixmap.as_mut(),
                     cache,
-                    pixmap_pool,
+                    &PixmapPool::new(),
                 );
 
                 Some(clip_pixmap)
@@ -36,9 +36,15 @@ pub fn apply(
         .expect("failed to allocate pixmap for clip");
 
     if let Some(clip) = clip.clip_path() {
-        // here we are handling the recurision on self, and while we hold the reference to the 
-        // cache lru instance this will OVERWRITE the existing pixmpa or cache entry  
-        apply(clip, transform, pixmap, &mut SvgrCache::none(), &PixmapPool::new());
+        // here we are handling the recurision on self, and while we hold the reference to the
+        // cache lru instance this will OVERWRITE the existing pixmpa or cache entry
+        apply(
+            clip,
+            transform,
+            pixmap,
+            &mut SvgrCache::none(),
+            &PixmapPool::new(),
+        );
     }
 
     let mut mask = tiny_skia::Mask::from_pixmap(clip_pixmap.as_ref(), tiny_skia::MaskType::Alpha);
@@ -103,7 +109,9 @@ fn clip_group(
     cache: &mut cache::SvgrCache,
     pixmap_pool: &cache::PixmapPool,
 ) -> Option<()> {
-    let mut clip_pixmap = pixmap_pool.take_or_allocate(pixmap.width(), pixmap.height()).unwrap();
+    let mut clip_pixmap = pixmap_pool
+        .take_or_allocate(pixmap.width(), pixmap.height())
+        .unwrap();
 
     draw_children(
         children,

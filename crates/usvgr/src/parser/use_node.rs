@@ -246,7 +246,7 @@ fn convert_children(
     is_context_element: bool,
     parent: &mut Group,
 ) {
-      // Temporarily adjust absolute transform so `convert_group` would account for `transform`.
+    // Temporarily adjust absolute transform so `convert_group` would account for `transform`.
     let old_abs_transform = parent.abs_transform;
     parent.abs_transform = parent.abs_transform.pre_concat(transform);
 

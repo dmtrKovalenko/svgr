@@ -203,24 +203,30 @@ fn render_pattern_pixmap<'a>(
         (rect.height() * sy).round() as u32,
     )?;
 
-    let pixmap = cache.with_subpixmap_cache(pattern, pixmap_pool, img_size, |mut pixmap, cache| {
-        let mut transform = tiny_skia::Transform::from_scale(sx, sy);
-        if let Some(vbox) = pattern.view_box() {
-            let ts = vbox.to_transform(rect.size());
-            transform = transform.pre_concat(ts);
-        }
+    let pixmap = cache.with_subpixmap_cache(
+        pattern,
+        transform,
+        pixmap_pool,
+        img_size,
+        |mut pixmap, cache| {
+            let mut transform = tiny_skia::Transform::from_scale(sx, sy);
+            if let Some(vbox) = pattern.view_box() {
+                let ts = vbox.to_transform(rect.size());
+                transform = transform.pre_concat(ts);
+            }
 
-        crate::render::render_nodes(
-            pattern.root(),
-            ctx,
-            transform,
-            &mut pixmap.as_mut(),
-            cache,
-            pixmap_pool,
-        );
+            crate::render::render_nodes(
+                pattern.root(),
+                ctx,
+                transform,
+                &mut pixmap.as_mut(),
+                cache,
+                pixmap_pool,
+            );
 
-        Some(pixmap)
-    })?;
+            Some(pixmap)
+        },
+    )?;
 
     let mut ts = tiny_skia::Transform::default();
     ts = ts.pre_concat(pattern.transform());

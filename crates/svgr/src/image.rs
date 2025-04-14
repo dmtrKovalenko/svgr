@@ -69,6 +69,7 @@ fn render_vector(
 ) -> Option<()> {
     let sub_pixmap = cache.with_subpixmap_cache(
         &original_href,
+        transform,
         pixmap_pool,
         IntSize::from_wh(pixmap.width(), pixmap.height()).unwrap(),
         |mut sub_pixmap, _| {

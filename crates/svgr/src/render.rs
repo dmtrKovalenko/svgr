@@ -108,6 +108,7 @@ fn render_group(
 
         let sub_pixmap = cache.with_subpixmap_cache(
             group,
+            transform,
             pixmap_pool,
             ibbox.size(),
             |mut sub_pixmap, cache| {

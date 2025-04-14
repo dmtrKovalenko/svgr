@@ -51,7 +51,8 @@ and can focus just on the rendering part.
 #![warn(missing_debug_implementations)]
 #![warn(missing_copy_implementations)]
 
-mod hashers;
+#[doc(hidden)]
+pub mod hashers;
 mod parser;
 mod tree;
 mod writer;
