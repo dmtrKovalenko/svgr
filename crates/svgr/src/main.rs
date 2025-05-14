@@ -5,9 +5,7 @@
 #![allow(clippy::uninlined_format_args)]
 
 use std::path;
-
 use svgr::PixmapPool;
-use usvgr::fontdb;
 
 fn main() {
     if let Err(e) = process() {
@@ -81,39 +79,51 @@ fn process() -> Result<(), String> {
             .map_err(|e| e.to_string())
     })?;
 
-    // fontdb initialization is pretty expensive, so perform it only when needed.
-    let has_text_nodes = xml_tree
-        .descendants()
-        .any(|n| n.has_tag_name(("http://www.w3.org/2000/svg", "text")));
+    #[cfg(feature = "text")]
+    let fontdb = {
+        let has_text_nodes = xml_tree
+            .descendants()
+            .any(|n| n.has_tag_name(("http://www.w3.org/2000/svg", "text")));
 
-    let mut fontdb = fontdb::Database::new();
-    if has_text_nodes {
-        timed(args.perf, "FontDB", || load_fonts(&mut args, &mut fontdb));
-        if args.list_fonts {
-            for face in fontdb.faces() {
-                if let fontdb::Source::File(ref path) = &face.source {
-                    let families: Vec<_> = face
-                        .families
-                        .iter()
-                        .map(|f| format!("{} ({}, {})", f.0, f.1.primary_language(), f.1.region()))
-                        .collect();
+        let mut fontdb = usvgr::fontdb::Database::new();
+        if has_text_nodes {
+            timed(args.perf, "FontDB", || load_fonts(&mut args, &mut fontdb));
+            if args.list_fonts {
+                for face in fontdb.faces() {
+                    if let usvgr::fontdb::Source::File(ref path) = &face.source {
+                        let families: Vec<_> = face
+                            .families
+                            .iter()
+                            .map(|f| {
+                                format!("{} ({}, {})", f.0, f.1.primary_language(), f.1.region())
+                            })
+                            .collect();
 
-                    println!(
-                        "{}: '{}', {}, {:?}, {:?}, {:?}",
-                        path.display(),
-                        families.join("', '"),
-                        face.index,
-                        face.style,
-                        face.weight.0,
-                        face.stretch
-                    );
+                        println!(
+                            "{}: '{}', {}, {:?}, {:?}, {:?}",
+                            path.display(),
+                            families.join("', '"),
+                            face.index,
+                            face.style,
+                            face.weight.0,
+                            face.stretch
+                        );
+                    }
                 }
             }
         }
-    }
+
+        fontdb
+    };
 
     let tree = timed(args.perf, "SVG Parsing", || {
-        usvgr::Tree::from_xmltree(&xml_tree, &args.usvgr, &fontdb).map_err(|e| e.to_string())
+        usvgr::Tree::from_xmltree(
+            &xml_tree,
+            &args.usvgr,
+            #[cfg(feature = "text")]
+            &fontdb,
+        )
+        .map_err(|e| e.to_string())
     })?;
 
     if args.query_all {
@@ -575,7 +585,8 @@ fn parse_args() -> Result<Args, String> {
     })
 }
 
-fn load_fonts(args: &mut Args, fontdb: &mut fontdb::Database) {
+#[cfg(feature = "text")]
+fn load_fonts(args: &mut Args, fontdb: &mut usvgr::fontdb::Database) {
     if !args.skip_system_fonts {
         fontdb.load_system_fonts();
     }
