@@ -85,95 +85,200 @@ fn render_group(
     cache: &mut crate::cache::SvgrCache,
     pixmap_pool: &crate::cache::PixmapPool,
 ) -> Option<()> {
-    let transform = transform.pre_concat(group.transform());
+    let final_transform = transform.pre_concat(group.transform());
+
     if !group.should_isolate() {
-        render_nodes(group, ctx, transform, pixmap, cache, pixmap_pool);
+        // Tier 0: Non-isolated groups - Render Directly
+        render_nodes(group, ctx, final_transform, pixmap, cache, pixmap_pool);
     } else {
-        let bbox = group.layer_bounding_box().transform(transform)?;
+        // Calculate the bounding box of the group's content *after* the final transform.
+        let final_bbox = group.layer_bounding_box().transform(final_transform)?;
         let mut ibbox = if group.filters().is_empty() {
-            // Convert group bbox into an integer one, expanding each side outwards by 2px
-            // to make sure that anti-aliased pixels would not be clipped.
             tiny_skia::IntRect::from_xywh(
-                bbox.x().floor() as i32 - 2,
-                bbox.y().floor() as i32 - 2,
-                bbox.width().ceil() as u32 + 4,
-                bbox.height().ceil() as u32 + 4,
+                final_bbox.x().floor() as i32 - 2,
+                final_bbox.y().floor() as i32 - 2,
+                final_bbox.width().ceil() as u32 + 4,
+                final_bbox.height().ceil() as u32 + 4,
             )?
         } else {
-            bbox.to_int_rect()
+            final_bbox.to_int_rect()
         };
-
-        // The bounding box for groups with filters is special and should not be expanded by 2px,
         ibbox = crate::geom::fit_to_rect(ibbox, ctx.max_bbox)?;
 
-        let sub_pixmap = cache.with_subpixmap_cache(
-            group,
-            transform,
-            pixmap_pool,
-            ibbox.size(),
-            |mut sub_pixmap, cache| {
-                let shift_ts = {
-                    // Original shift.
-                    let mut dx = bbox.x();
-                    let mut dy = bbox.y();
+        // Check if the isolated group has any effects (filters, clip path, mask)
+        let require_transform_before_subsampling = !group.filters().is_empty()
+            || group.clip_path().is_some()
+            || group.mask().is_some()
+            || !group.abs_transform().is_identity();
 
-                    // Account for subpixel positioned layers.
-                    dx -= bbox.x() - ibbox.x() as f32;
-                    dy -= bbox.y() - ibbox.y() as f32;
+        if require_transform_before_subsampling {
+            // Tier 2: Isolated group which requires transform before filtering or clipping
+            render_isolated_group_with_effects(
+                group,
+                ctx,
+                final_transform,
+                ibbox, // Pass the corrected ibbox
+                pixmap,
+                cache,
+                pixmap_pool,
+            )?;
+        } else {
+            // Tier 1: Isolated Group with a transform but no filters/clip-path/masks which
+            // allows to render the group elements without a transform and apply transform
+            // only when we render the pixmap on a canvas significatnly increasing the caching rate
+            render_isolated_group_without_effects(
+                group,
+                ctx,
+                transform,
+                ibbox,
+                pixmap,
+                cache,
+                pixmap_pool,
+            )?;
+        }
+    }
 
-                    tiny_skia::Transform::from_translate(-dx, -dy)
-                };
+    Some(())
+}
 
-                let transform = shift_ts.pre_concat(transform);
+fn render_isolated_group_with_effects(
+    group: &usvgr::Group,
+    ctx: &Context,
+    final_transform: tiny_skia::Transform,
+    ibbox: tiny_skia::IntRect,
+    pixmap: &mut tiny_skia::PixmapMut,
+    cache: &mut crate::cache::SvgrCache,
+    pixmap_pool: &crate::cache::PixmapPool,
+) -> Option<()> {
+    // Tier 2: Isolated Group *WITH* Filters, Clip Paths, or Masks
+    // Cache key must include the final_transform for correctness.
+    // Rendering into sub-pixmap uses final_transform relative to ibbox origin.
+    // Effects are applied inside the sub-pixmap using this same relative transform.
+    // Final draw is identity relative to ibbox position.
 
-                render_nodes(
-                    group,
-                    ctx,
-                    transform,
-                    &mut sub_pixmap.as_mut(),
+    let render_transform_in_subpixmap =
+        tiny_skia::Transform::from_translate(-(ibbox.x() as f32), -(ibbox.y() as f32))
+            .pre_concat(final_transform); // Use final_transform here
+
+    let sub_pixmap = cache.with_subpixmap_cache(
+        group,
+        final_transform, // cache is invalidated every time the transform changed
+        pixmap_pool,
+        ibbox.size(),
+        |mut sub_pixmap, cache| {
+            render_nodes(
+                group,
+                ctx,
+                render_transform_in_subpixmap,
+                &mut sub_pixmap.as_mut(),
+                cache,
+                pixmap_pool,
+            );
+
+            if !group.filters().is_empty() {
+                for filter in group.filters() {
+                    crate::filter::apply(
+                        filter,
+                        render_transform_in_subpixmap,
+                        &mut sub_pixmap,
+                        cache,
+                        pixmap_pool,
+                    );
+                }
+            };
+
+            if let Some(clip_path) = group.clip_path() {
+                crate::clip::apply(
+                    clip_path,
+                    render_transform_in_subpixmap,
+                    &mut sub_pixmap,
                     cache,
                     pixmap_pool,
                 );
+            }
 
-                if !group.filters().is_empty() {
-                    for filter in group.filters() {
-                        crate::filter::apply(
-                            filter,
-                            transform,
-                            &mut sub_pixmap,
-                            cache,
-                            pixmap_pool,
-                        );
-                    }
-                };
+            if let Some(mask) = group.mask() {
+                crate::mask::apply(
+                    mask,
+                    ctx,
+                    render_transform_in_subpixmap,
+                    &mut sub_pixmap,
+                    cache,
+                    pixmap_pool,
+                );
+            }
 
-                if let Some(clip_path) = group.clip_path() {
-                    crate::clip::apply(clip_path, transform, &mut sub_pixmap, cache, pixmap_pool);
-                }
+            Some(sub_pixmap)
+        },
+    )?;
 
-                if let Some(mask) = group.mask() {
-                    crate::mask::apply(mask, ctx, transform, &mut sub_pixmap, cache, pixmap_pool);
-                }
+    let paint = tiny_skia::PixmapPaint {
+        opacity: group.opacity().get(),
+        blend_mode: convert_blend_mode(group.blend_mode()),
+        quality: tiny_skia::FilterQuality::Bilinear,
+    };
 
-                Some(sub_pixmap)
-            },
-        )?;
+    pixmap.draw_pixmap(
+        ibbox.x(),
+        ibbox.y(),
+        sub_pixmap.as_ref(),
+        &paint,
+        tiny_skia::Transform::identity(), // Already fully transformed/positioned in sub-pixmap
+        None,
+    );
 
-        let paint = tiny_skia::PixmapPaint {
-            opacity: group.opacity().get(),
-            blend_mode: convert_blend_mode(group.blend_mode()),
-            quality: tiny_skia::FilterQuality::Nearest,
-        };
+    Some(())
+}
 
-        pixmap.draw_pixmap(
-            ibbox.x(),
-            ibbox.y(),
-            sub_pixmap.as_ref(),
-            &paint,
-            tiny_skia::Transform::identity(),
-            None,
-        );
-    }
+fn render_isolated_group_without_effects(
+    group: &usvgr::Group,
+    ctx: &Context,
+    transform: tiny_skia::Transform,
+    ibbox: tiny_skia::IntRect,
+    pixmap: &mut tiny_skia::PixmapMut,
+    cache: &mut crate::cache::SvgrCache,
+    pixmap_pool: &crate::cache::PixmapPool,
+) -> Option<()> {
+    let sub_pixmap = cache.with_subpixmap_cache(
+        group,
+        // Transform cache key is based only on the parent transform (if present)
+        // which allows to effectively cache the group without transform at all and apply
+        // transform only when finally rendering pixmap on canvas
+        transform,
+        pixmap_pool,
+        ibbox.size(),
+        |mut sub_pixmap, cache| {
+            let render_transform_in_subpixmap =
+                tiny_skia::Transform::from_translate(-(ibbox.x() as f32), -(ibbox.y() as f32))
+                    .pre_concat(transform); // Render with parent transform + shift to the ibbox
+
+            render_nodes(
+                group,
+                ctx,
+                render_transform_in_subpixmap,
+                &mut sub_pixmap.as_mut(),
+                cache,
+                pixmap_pool,
+            );
+            Some(sub_pixmap)
+        },
+    )?;
+
+    let paint = tiny_skia::PixmapPaint {
+        opacity: group.opacity().get(),
+        blend_mode: convert_blend_mode(group.blend_mode()),
+        quality: tiny_skia::FilterQuality::Bilinear,
+    };
+
+    pixmap.draw_pixmap(
+        ibbox.x(), // Draw at the ibbox origin
+        ibbox.y(), // Draw at the ibbox origin
+        sub_pixmap.as_ref(),
+        &paint,
+        // Finally applying the group transform when rendering either new or cached pixmap
+        group.transform(),
+        None,
+    );
 
     Some(())
 }
