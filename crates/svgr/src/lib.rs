@@ -74,17 +74,3 @@ pub fn render_node(
     render::render_node(node, ctx, transform, pixmap, cache, pixmap_pool);
     Some(())
 }
-
-pub(crate) trait OptionLog {
-    fn log_none<F: FnOnce()>(self, f: F) -> Self;
-}
-
-impl<T> OptionLog for Option<T> {
-    #[inline]
-    fn log_none<F: FnOnce()>(self, f: F) -> Self {
-        self.or_else(|| {
-            f();
-            None
-        })
-    }
-}

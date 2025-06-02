@@ -91,7 +91,6 @@ pub(crate) enum Error {
 }
 
 trait PixmapExt: Sized {
-    fn try_create(width: u32, height: u32) -> Result<tiny_skia::Pixmap, Error>;
     fn copy_region(&self, region: IntRect) -> Result<tiny_skia::Pixmap, Error>;
     fn clear(&mut self);
     fn into_srgb(&mut self);
@@ -99,10 +98,6 @@ trait PixmapExt: Sized {
 }
 
 impl PixmapExt for tiny_skia::Pixmap {
-    fn try_create(width: u32, height: u32) -> Result<tiny_skia::Pixmap, Error> {
-        tiny_skia::Pixmap::new(width, height).ok_or(Error::InvalidRegion)
-    }
-
     fn copy_region(&self, region: IntRect) -> Result<tiny_skia::Pixmap, Error> {
         let rect = IntRect::from_xywh(region.x(), region.y(), region.width(), region.height())
             .ok_or(Error::InvalidRegion)?;
@@ -326,8 +321,7 @@ impl Image {
         self.image.height()
     }
 
-    fn as_ref(&self) -> &tiny_skia::Pixmap {
-        &self.image
+    fn as_ref(&self) -> &tiny_skia::Pixmap { &self.image
     }
 }
 
@@ -397,30 +391,32 @@ fn apply_inner(
             usvgr::filter::Kind::Blend(ref fe) => {
                 let input1 = get_input(fe.input1(), region, source, &results)?;
                 let input2 = get_input(fe.input2(), region, source, &results)?;
-                apply_blend(fe, cs, region, input1, input2)
+                apply_blend(fe, cs, region, input1, input2, pixmap_pool)
             }
             usvgr::filter::Kind::DropShadow(ref fe) => {
                 let input = get_input(fe.input(), region, source, &results)?;
-                apply_drop_shadow(fe, cs, ts, input)
+                apply_drop_shadow(fe, cs, ts, input, pixmap_pool)
             }
-            usvgr::filter::Kind::Flood(ref fe) => apply_flood(fe, region),
+            usvgr::filter::Kind::Flood(ref fe) => apply_flood(fe, region, pixmap_pool),
             usvgr::filter::Kind::GaussianBlur(ref fe) => {
                 let input = get_input(fe.input(), region, source, &results)?;
                 apply_blur(fe, cs, ts, input)
             }
             usvgr::filter::Kind::Offset(ref fe) => {
                 let input = get_input(fe.input(), region, source, &results)?;
-                apply_offset(fe, ts, input)
+                apply_offset(fe, ts, input, pixmap_pool)
             }
             usvgr::filter::Kind::Composite(ref fe) => {
                 let input1 = get_input(fe.input1(), region, source, &results)?;
                 let input2 = get_input(fe.input2(), region, source, &results)?;
-                apply_composite(fe, cs, region, input1, input2)
+                apply_composite(fe, cs, region, input1, input2, pixmap_pool)
             }
-            usvgr::filter::Kind::Merge(ref fe) => apply_merge(fe, cs, region, source, &results),
+            usvgr::filter::Kind::Merge(ref fe) => {
+                apply_merge(fe, cs, region, source, &results, pixmap_pool)
+            }
             usvgr::filter::Kind::Tile(ref fe) => {
                 let input = get_input(fe.input(), region, source, &results)?;
-                apply_tile(input, region)
+                apply_tile(input, region, pixmap_pool)
             }
             usvgr::filter::Kind::Image(ref fe) => {
                 apply_image(fe, region, subregion, ts, cache, pixmap_pool)
@@ -444,16 +440,18 @@ fn apply_inner(
             usvgr::filter::Kind::DisplacementMap(ref fe) => {
                 let input1 = get_input(fe.input1(), region, source, &results)?;
                 let input2 = get_input(fe.input2(), region, source, &results)?;
-                apply_displacement_map(fe, region, cs, ts, input1, input2)
+                apply_displacement_map(fe, region, cs, ts, input1, input2, pixmap_pool)
             }
-            usvgr::filter::Kind::Turbulence(ref fe) => apply_turbulence(fe, region, cs, ts),
+            usvgr::filter::Kind::Turbulence(ref fe) => {
+                apply_turbulence(fe, region, cs, ts, pixmap_pool)
+            }
             usvgr::filter::Kind::DiffuseLighting(ref fe) => {
                 let input = get_input(fe.input(), region, source, &results)?;
-                apply_diffuse_lighting(fe, region, cs, ts, input)
+                apply_diffuse_lighting(fe, region, cs, ts, input, pixmap_pool)
             }
             usvgr::filter::Kind::SpecularLighting(ref fe) => {
                 let input = get_input(fe.input(), region, source, &results)?;
-                apply_specular_lighting(fe, region, cs, ts, input)
+                apply_specular_lighting(fe, region, cs, ts, input, pixmap_pool)
             }
         }?;
 
@@ -591,13 +589,16 @@ fn apply_drop_shadow(
     cs: usvgr::filter::ColorInterpolation,
     ts: usvgr::Transform,
     input: Image,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) -> Result<Image, Error> {
     let (dx, dy) = match scale_coordinates(fe.dx(), fe.dy(), ts) {
         Some(v) => v,
         None => return Ok(input),
     };
 
-    let mut pixmap = tiny_skia::Pixmap::try_create(input.width(), input.height())?;
+    let mut pixmap = pixmap_pool
+        .take_or_allocate(input.width(), input.height())
+        .ok_or(Error::NoResults)?;
     let input_pixmap = input.into_color_space(cs)?.take()?;
     let mut shadow_pixmap = input_pixmap.clone();
 
@@ -677,6 +678,7 @@ fn apply_offset(
     fe: &usvgr::filter::Offset,
     ts: usvgr::Transform,
     input: Image,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) -> Result<Image, Error> {
     let (dx, dy) = match scale_coordinates(fe.dx(), fe.dy(), ts) {
         Some(v) => v,
@@ -687,7 +689,10 @@ fn apply_offset(
         return Ok(input);
     }
 
-    let mut pixmap = tiny_skia::Pixmap::try_create(input.width(), input.height())?;
+    let mut pixmap = pixmap_pool
+        .take_or_allocate(input.width(), input.height())
+        .ok_or(Error::NoResults)?;
+
     pixmap.draw_pixmap(
         dx as i32,
         dy as i32,
@@ -706,11 +711,14 @@ fn apply_blend(
     region: IntRect,
     input1: Image,
     input2: Image,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) -> Result<Image, Error> {
     let input1 = input1.into_color_space(cs)?;
     let input2 = input2.into_color_space(cs)?;
 
-    let mut pixmap = tiny_skia::Pixmap::try_create(region.width(), region.height())?;
+    let mut pixmap = pixmap_pool
+        .take_or_allocate(region.width(), region.height())
+        .ok_or(Error::NoResults)?;
 
     pixmap.draw_pixmap(
         0,
@@ -742,13 +750,16 @@ fn apply_composite(
     region: IntRect,
     input1: Image,
     input2: Image,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) -> Result<Image, Error> {
     use usvgr::filter::CompositeOperator as Operator;
 
     let input1 = input1.into_color_space(cs)?;
     let input2 = input2.into_color_space(cs)?;
 
-    let mut pixmap = tiny_skia::Pixmap::try_create(region.width(), region.height())?;
+    let mut pixmap = pixmap_pool
+        .take_or_allocate(region.width(), region.height())
+        .ok_or(Error::NoResults)?;
 
     if let Operator::Arithmetic { k1, k2, k3, k4 } = fe.operator() {
         let pixmap1 = input1.take()?;
@@ -806,8 +817,11 @@ fn apply_merge(
     region: IntRect,
     source: &tiny_skia::Pixmap,
     results: &[FilterResult],
+    pixmap_pool: &crate::cache::PixmapPool,
 ) -> Result<Image, Error> {
-    let mut pixmap = tiny_skia::Pixmap::try_create(region.width(), region.height())?;
+    let mut pixmap = pixmap_pool
+        .take_or_allocate(region.width(), region.height())
+        .ok_or(Error::NoResults)?;
 
     for input in fe.inputs() {
         let input = get_input(input, region, source, results)?;
@@ -825,10 +839,16 @@ fn apply_merge(
     Ok(Image::from_image(pixmap, cs))
 }
 
-fn apply_flood(fe: &usvgr::filter::Flood, region: IntRect) -> Result<Image, Error> {
+fn apply_flood(
+    fe: &usvgr::filter::Flood,
+    region: IntRect,
+    pixmap_pool: &crate::cache::PixmapPool,
+) -> Result<Image, Error> {
     let c = fe.color();
 
-    let mut pixmap = tiny_skia::Pixmap::try_create(region.width(), region.height())?;
+    let mut pixmap = pixmap_pool
+        .take_or_allocate(region.width(), region.height())
+        .ok_or(Error::NoResults)?;
     pixmap.fill(tiny_skia::Color::from_rgba8(
         c.red,
         c.green,
@@ -842,7 +862,11 @@ fn apply_flood(fe: &usvgr::filter::Flood, region: IntRect) -> Result<Image, Erro
     ))
 }
 
-fn apply_tile(input: Image, region: IntRect) -> Result<Image, Error> {
+fn apply_tile(
+    input: Image,
+    region: IntRect,
+    pixmap_pool: &crate::cache::PixmapPool,
+) -> Result<Image, Error> {
     let subregion = input.region.translate(-region.x(), -region.y()).unwrap();
 
     let tile_pixmap = input.image.copy_region(subregion)?;
@@ -855,7 +879,9 @@ fn apply_tile(input: Image, region: IntRect) -> Result<Image, Error> {
         tiny_skia::Transform::from_translate(subregion.x() as f32, subregion.y() as f32),
     );
 
-    let mut pixmap = tiny_skia::Pixmap::try_create(region.width(), region.height())?;
+    let mut pixmap = pixmap_pool
+        .take_or_allocate(region.width(), region.height())
+        .ok_or(Error::NoResults)?;
     let rect = tiny_skia::Rect::from_xywh(0.0, 0.0, region.width() as f32, region.height() as f32)
         .unwrap();
     pixmap.fill_rect(rect, &paint, tiny_skia::Transform::identity(), None);
@@ -874,7 +900,9 @@ fn apply_image(
     cache: &mut crate::cache::SvgrCache,
     pixmap_pool: &crate::cache::PixmapPool,
 ) -> Result<Image, Error> {
-    let mut pixmap = tiny_skia::Pixmap::try_create(region.width(), region.height())?;
+    let mut pixmap = pixmap_pool
+        .take_or_allocate(region.width(), region.height())
+        .ok_or(Error::NoResults)?;
 
     match fe.data() {
         usvgr::filter::ImageKind::Image(ref kind) => {
@@ -1010,11 +1038,14 @@ fn apply_displacement_map(
     ts: usvgr::Transform,
     input1: Image,
     input2: Image,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) -> Result<Image, Error> {
     let pixmap1 = input1.into_color_space(cs)?.take()?;
     let pixmap2 = input2.into_color_space(cs)?.take()?;
 
-    let mut pixmap = tiny_skia::Pixmap::try_create(region.width(), region.height())?;
+    let mut pixmap = pixmap_pool
+        .take_or_allocate(region.width(), region.height())
+        .ok_or(Error::NoResults)?;
 
     let (sx, sy) = match scale_coordinates(fe.scale(), fe.scale(), ts) {
         Some(v) => v,
@@ -1038,8 +1069,11 @@ fn apply_turbulence(
     region: IntRect,
     cs: usvgr::filter::ColorInterpolation,
     ts: usvgr::Transform,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) -> Result<Image, Error> {
-    let mut pixmap = tiny_skia::Pixmap::try_create(region.width(), region.height())?;
+    let mut pixmap = pixmap_pool
+        .take_or_allocate(region.width(), region.height())
+        .ok_or(Error::NoResults)?;
 
     let (sx, sy) = ts.get_scale();
     if sx.approx_zero_ulps(4) || sy.approx_zero_ulps(4) {
@@ -1071,8 +1105,11 @@ fn apply_diffuse_lighting(
     cs: usvgr::filter::ColorInterpolation,
     ts: usvgr::Transform,
     input: Image,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) -> Result<Image, Error> {
-    let mut pixmap = tiny_skia::Pixmap::try_create(region.width(), region.height())?;
+    let mut pixmap = pixmap_pool
+        .take_or_allocate(region.width(), region.height())
+        .ok_or(Error::NoResults)?;
 
     let light_source = transform_light_source(fe.light_source(), region, ts);
 
@@ -1092,8 +1129,11 @@ fn apply_specular_lighting(
     cs: usvgr::filter::ColorInterpolation,
     ts: usvgr::Transform,
     input: Image,
+    pixmap_pool: &crate::cache::PixmapPool,
 ) -> Result<Image, Error> {
-    let mut pixmap = tiny_skia::Pixmap::try_create(region.width(), region.height())?;
+    let mut pixmap = pixmap_pool
+        .take_or_allocate(region.width(), region.height())
+        .ok_or(Error::NoResults)?;
 
     let light_source = transform_light_source(fe.light_source(), region, ts);
 
