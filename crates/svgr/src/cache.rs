@@ -36,15 +36,11 @@ impl SvgrCache {
 // 2^16 = 65536x65536 which should be enough for ANY renderable canvas size
 const MAX_PIXMAP_DIMENSION_POW_2: usize = 16;
 
-/// This is a pixmap pool that preallocates pixmaps of various (power of 2s) sizes
-/// and then reuses them without reallocating memory for all the requested pixel sizes
-/// that are larger or equal to the `SIZE^2xSIZE^2` size
+/// This is a mutable pixmap pool which allocates queues of size classes (powers of 2) containing
+/// previously allocated and used pixmaps. They are given to the consumer as a virtual pixmap of the
+/// requested size but are always allocated as a closest power of 2 sized memory block.
 #[derive(Debug)]
 pub struct PixmapPool {
-    /// This is a mutable staack allocated array of size classes (powers of 2) which contains a
-    /// vector of pixmap already which are given to the consumer as a virtual pixmap of the
-    /// requested size but are always allocated as a closest power of 2 sized memory block.
-    ///
     /// We guarantee that the pixmap pool is leaving longer than the memory but wrapping this in a
     /// life time is a way to much work for the fork, so sticking to the no runtime check ref
     /// instead.
