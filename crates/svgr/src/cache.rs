@@ -1,17 +1,12 @@
 use lru::LruCache;
-use std::cell::{RefCell, RefMut};
-use std::collections::HashMap;
-use std::{
-    collections::hash_map::Entry,
-    hash::{BuildHasher, Hash, Hasher},
-};
-use tiny_skia::{IntSize, Pixmap};
+use std::cell::UnsafeCell;
+use std::collections::VecDeque;
+use std::hash::{BuildHasher, Hash, Hasher};
+use tiny_skia::{IntSize, Pixmap, BYTES_PER_PIXEL};
 use usvgr::{
     ahash::{self},
     lru,
 };
-
-use crate::OptionLog;
 
 #[derive(Debug)]
 struct SvgrCacheInternal<HashBuilder: BuildHasher = ahash::RandomState> {
@@ -38,85 +33,114 @@ impl SvgrCache {
     }
 }
 
-/// Pixmap ring buffer required for reusing allocation when creating a lot of inner pixmaps
+// 2^16 = 65536x65536 which should be enough for ANY renderable canvas size
+const MAX_PIXMAP_DIMENSION_POW_2: usize = 16;
+
+/// This is a pixmap pool that preallocates pixmaps of various (power of 2s) sizes
+/// and then reuses them without reallocating memory for all the requested pixel sizes
+/// that are larger or equal to the `SIZE^2xSIZE^2` size
 #[derive(Debug)]
-pub struct PixmapPool<HashBuilder: BuildHasher = ahash::RandomState> {
-    // Store pixmaps by size for efficient reuse
-    buffers: RefCell<HashMap<(u32, u32), Pixmap, HashBuilder>>,
+pub struct PixmapPool {
+    /// This is a mutable staack allocated array of size classes (powers of 2) which contains a
+    /// vector of pixmap already which are given to the consumer as a virtual pixmap of the
+    /// requested size but are always allocated as a closest power of 2 sized memory block.
+    ///
+    /// We guarantee that the pixmap pool is leaving longer than the memory but wrapping this in a
+    /// life time is a way to much work for the fork, so sticking to the no runtime check ref
+    /// instead.
+    size_classes: UnsafeCell<[VecDeque<Pixmap>; MAX_PIXMAP_DIMENSION_POW_2]>,
 }
 
-impl<THashBuilder: BuildHasher + Default> PixmapPool<THashBuilder> {
-    /// Create new unbounded pixmap pool
+impl PixmapPool {
+    /// Creates a new pixmap pool without any preallocated pixmaps.
     pub fn new() -> Self {
         Self {
-            buffers: RefCell::new(HashMap::with_hasher(THashBuilder::default())),
+            size_classes: UnsafeCell::new(std::array::from_fn(|_| VecDeque::new())),
         }
     }
 
-    #[allow(unused)]
-    pub(crate) fn get_or_allocate(&self, width: u32, height: u32) -> Option<RefMut<Pixmap>> {
-        let mut buffers = self.buffers.borrow_mut();
-
-        match buffers.entry((width, height)) {
-            Entry::Occupied(pixmap) => {
-                let existing = pixmap.into_mut();
-                existing.data_mut().fill(0);
-
-                // Drop the borrow_mut before creating a new one
-                drop(buffers);
-
-                // Create a reference to the specific pixmap
-                Some(RefMut::map(self.buffers.borrow_mut(), |map| {
-                    map.get_mut(&(width, height)).unwrap()
-                }))
+    /// Creates a new pixmap pool with the specified capacity
+    pub fn new_with_capacity(capacity: usize) -> Self {
+        let size_classes = std::array::from_fn(|i| {
+            if i < 8 {
+                VecDeque::with_capacity(capacity)
+            } else {
+                VecDeque::with_capacity(capacity / 2)
             }
-            Entry::Vacant(vacant_entry) => {
-                let new_pixmap = Pixmap::new(width, height).log_none(|| {
-                    log::warn!("Failed to allocate a group layer for sub pixmap for hashing")
-                })?;
+        });
 
-                vacant_entry.insert(new_pixmap);
-
-                // Drop the borrow_mut before creating a new one
-                drop(buffers);
-
-                // Create a reference to the specific pixmap
-                Some(RefMut::map(self.buffers.borrow_mut(), |map| {
-                    map.get_mut(&(width, height)).unwrap()
-                }))
-            }
+        Self {
+            size_classes: UnsafeCell::new(size_classes),
         }
+    }
+
+    fn next_power_of_2(n: u32) -> u32 {
+        1 << (32 - (n - 1).leading_zeros())
+    }
+
+    fn standard_square_size(width: u32, height: u32) -> u32 {
+        let max_dim = u32::max(width, height);
+        Self::next_power_of_2(max_dim)
+    }
+
+    fn safe_size_class_index(width: u32) -> usize {
+        let size_class = width.trailing_zeros() as usize;
+        if size_class >= MAX_PIXMAP_DIMENSION_POW_2 {
+            panic!(
+                "Can not render pixmap with a size larger than 2^{}",
+                MAX_PIXMAP_DIMENSION_POW_2
+            );
+        }
+
+        size_class
+    }
+
+    fn data_len_for_size(size: IntSize) -> Option<usize> {
+        let length = size.width().checked_mul(size.height())? as usize;
+
+        length.checked_mul(BYTES_PER_PIXEL)
     }
 
     pub(crate) fn take_or_allocate(&self, width: u32, height: u32) -> Option<Pixmap> {
-        let mut buffers = self.buffers.borrow_mut();
+        let size = Self::standard_square_size(width, height);
+        let class_index = Self::safe_size_class_index(size);
+        let virtual_size = IntSize::from_wh(width, height)?;
+        let virtual_data_len = Self::data_len_for_size(virtual_size)?;
 
-        match buffers.entry((width, height)) {
-            Entry::Occupied(pixmap) => {
-                let mut existing = pixmap.remove_entry().1;
-                existing.data_mut().fill(0);
-
-                Some(existing)
-            }
-            Entry::Vacant(_) => Pixmap::new(width, height).log_none(|| {
-                log::warn!("Failed to allocate a group layer for sub pixmap for hashing")
-            }),
+        let mut buffer = unsafe {
+            let size_classes = &mut *self.size_classes.get();
+            size_classes[class_index]
+                .pop_back()
+                .map(|pixmap| pixmap.take())
         }
+        .or_else(|| {
+            let std_size = IntSize::from_wh(size, size)?;
+            let std_data_len = Self::data_len_for_size(std_size)?;
+            Some(vec![0; std_data_len])
+        })?;
+
+        unsafe {
+            buffer.set_len(virtual_data_len);
+        }
+        buffer.fill(0);
+
+        Pixmap::from_vec(buffer, virtual_size)
     }
 
     pub(crate) fn release<'a>(&'a self, pixmap: Pixmap) -> &'a Pixmap {
-        let size_key = (pixmap.width(), pixmap.height());
-        let mut buffers = self.buffers.borrow_mut();
+        let virtual_width = pixmap.width();
+        let virtual_height = pixmap.height();
+        let size = Self::standard_square_size(virtual_width, virtual_height);
+        let class_index = Self::safe_size_class_index(size);
 
-        // Insert the pixmap and get a reference to it
-        let entry = buffers.entry(size_key).insert_entry(pixmap);
-        let owned_pixmap = entry.get();
-
-        // We need to extend the lifetime of the pixmap becuase we don't want to be bound to the
-        // refcell this is safe because we always know that pixamp will be present in the buffer
-        // no matter what, the only potential issue might be realted to the recursive writes
-        // (if during the lifetime of this reference someone will write something)
-        unsafe { std::mem::transmute::<&Pixmap, &'a Pixmap>(owned_pixmap) }
+        unsafe {
+            let size_classes = &mut *self.size_classes.get();
+            size_classes[class_index].push_back(pixmap);
+            // Safe because we just pushed the pixmap and the pool is guaranteed to live longer
+            size_classes[class_index]
+                .back()
+                .expect("Failed to get back stored pixmap")
+        }
     }
 }
 
@@ -162,7 +186,6 @@ impl<THashBuilder: BuildHasher + Default> SvgrCache<THashBuilder> {
         Some(Hasher::finish(&hasher))
     }
 
-    /// Creates sub pixmap that will be cached itself within a canvas cache. Guarantees empty canvas within closure.  
     pub(crate) fn with_subpixmap_cache<'a, F: FnOnce(Pixmap, &mut Self) -> Option<Pixmap>>(
         &'a mut self,
         node: &impl Hash,
@@ -182,7 +205,6 @@ impl<THashBuilder: BuildHasher + Default> SvgrCache<THashBuilder> {
 
         if !self.lru()?.contains(&hash) {
             let pixmap = pixmap_pool.take_or_allocate(size.width(), size.height())?;
-
             let pixmap = { f(pixmap, self) }?;
 
             // we basically passing down the mutable ref and getting it back
