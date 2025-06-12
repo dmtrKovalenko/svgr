@@ -23,8 +23,8 @@ pub fn apply(
     map: ImageRef,
     dest: ImageRefMut,
 ) {
-    assert!(src.width == map.width && src.width == dest.width);
-    assert!(src.height == map.height && src.height == dest.height);
+    debug_assert!(src.width == map.width && src.width == dest.width);
+    debug_assert!(src.height == map.height && src.height == dest.height);
 
     let w = src.width as i32;
     let h = src.height as i32;

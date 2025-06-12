@@ -134,32 +134,26 @@ fn convert_paint(
     opacity: &mut Opacity,
     cache: &mut converter::Cache,
 ) -> Option<(Paint, Option<ContextElement>)> {
-    let inlined_color: Option<svgrtypes::Color> = node.attribute(aid);
-    if let Some(svg_color) = inlined_color {
-        let (color, alpha) = svg_color.split_alpha();
-        *opacity = alpha;
-        return Some((Paint::Color(color), None));
-    }
-
-    let value: &str = node.attribute(aid)?;
-    let paint = match svgrtypes::Paint::from_str(value) {
-        Ok(v) => v,
-        Err(_) => {
-            if aid == AId::Fill {
+    let paint = match node.attribute_value(aid)? {
+        SvgAttributeValueRef::Color(color) => svgrtypes::Paint::Color(color),
+        SvgAttributeValueRef::Str(text_paint) => match svgrtypes::Paint::from_str(text_paint) {
+            Ok(v) => v,
+            Err(_) if aid == AId::Fill => {
                 log::warn!(
                     "Failed to parse fill value: '{}'. Fallback to black.",
-                    value
+                    text_paint
                 );
                 svgrtypes::Paint::Color(svgrtypes::Color::black())
-            } else if aid == AId::Stroke {
-                log::warn!(
-                    "Failed to parse stroke value: '{}'. Fallback to no stroke.",
-                    value
-                );
-                return None;
-            } else {
+            }
+            _ => return None,
+        },
+        value => {
+            log::warn!("Received unexpected value for the paint: '{:?}'. It should be either color or string", value);
+            if aid != AId::Fill {
                 return None;
             }
+
+            svgrtypes::Paint::Color(svgrtypes::Color::black())
         }
     };
 

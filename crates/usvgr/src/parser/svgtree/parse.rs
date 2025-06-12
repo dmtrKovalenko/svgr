@@ -8,6 +8,8 @@ use roxmltree::Error;
 use simplecss::Declaration;
 use svgrtypes::FontShorthand;
 
+use crate::svgtree::SvgAttributeValueRef;
+
 use super::{
     AId, Attribute, Document, EId, NestedNodeData, NestedNodeKind, NestedSvgDocument, NodeData,
     NodeId, NodeKind, ShortRange, SvgAttributeValue,
@@ -645,9 +647,9 @@ fn find_recursive_pattern(aid: AId, doc: &mut Document) -> Option<NodeId> {
         .filter(|n| n.tag_name() == Some(EId::Pattern))
     {
         for node in pattern_node.descendants() {
-            let value = match node.attribute(aid) {
-                Some(v) => v,
-                None => continue,
+            let value = match node.attribute_value(aid) {
+                Some(SvgAttributeValueRef::Str(v)) => v,
+                _ => continue,
             };
 
             if let Ok(svgrtypes::Paint::FuncIRI(link_id, _)) = svgrtypes::Paint::from_str(value) {
@@ -660,9 +662,9 @@ fn find_recursive_pattern(aid: AId, doc: &mut Document) -> Option<NodeId> {
                     // Check that linked node children doesn't link this pattern.
                     if let Some(linked_node) = doc.element_by_id(link_id) {
                         for node2 in linked_node.descendants() {
-                            let value2 = match node2.attribute(aid) {
-                                Some(v) => v,
-                                None => continue,
+                            let value2 = match node2.attribute_value(aid) {
+                                Some(SvgAttributeValueRef::Str(v)) => v,
+                                _ => continue,
                             };
 
                             if let Ok(svgrtypes::Paint::FuncIRI(link_id2, _)) =

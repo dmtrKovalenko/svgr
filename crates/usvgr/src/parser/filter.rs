@@ -925,15 +925,16 @@ fn convert_specular_lighting(fe: SvgNode, primitives: &[Primitive]) -> Option<Ki
 #[inline(never)]
 fn convert_lighting_color(node: SvgNode) -> Color {
     // Color's alpha doesn't affect lighting-color. Simply skip it.
-    match node.attribute(AId::LightingColor) {
-        Some("currentColor") => {
+    match node.attribute_value(AId::LightingColor) {
+        Some(SvgAttributeValueRef::Color(c)) => c.split_alpha().0,
+        Some(SvgAttributeValueRef::Str("currentColor")) => {
             node.find_attribute(AId::Color)
                 // Yes, a missing `currentColor` resolves to black and not white.
                 .unwrap_or(svgrtypes::Color::black())
                 .split_alpha()
                 .0
         }
-        Some(value) => {
+        Some(SvgAttributeValueRef::Str(value)) => {
             if let Ok(c) = svgrtypes::Color::from_str(value) {
                 c.split_alpha().0
             } else {

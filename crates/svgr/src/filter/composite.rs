@@ -23,8 +23,8 @@ pub fn arithmetic(
     src2: ImageRef,
     dest: ImageRefMut,
 ) {
-    assert!(src1.width == src2.width && src1.width == dest.width);
-    assert!(src1.height == src2.height && src1.height == dest.height);
+    debug_assert!(src1.width == src2.width && src1.width == dest.width);
+    debug_assert!(src1.height == src2.height && src1.height == dest.height);
 
     let calc = |i1, i2, max| {
         let i1 = i1 as f32 / 255.0;

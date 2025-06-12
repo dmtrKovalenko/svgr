@@ -1101,7 +1101,7 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for &'a str {
         let str_value = value.as_str();
 
         if let None = str_value {
-            eprintln!("FFrames critical warning: Attr `{aid:?}` requested a Str type on the node {node:?} but received a {value:?}. Report/fix immediately");
+            log::error!("SVG rendering critical error: Attr `{aid:?}` requested a string type value on the node {node:?} but received a {value:?}. If you believe that the typing is correct file an issue at https://github.com/dmtrKovalenko/fframes ASAP.");
         }
 
         str_value

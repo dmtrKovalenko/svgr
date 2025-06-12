@@ -183,7 +183,9 @@ pub fn specular_lighting(
     src: ImageRef,
     dest: ImageRefMut,
 ) {
-    assert!(src.width == dest.width && src.height == dest.height);
+    if src.width != dest.width || src.height != dest.height {
+        log::error!("Specular lighting: source and destination images must have the same size for it to behave proprerly.");
+    }
 
     let light_factor = |normal: Normal, light_vector: Vector3| {
         let h = light_vector + Vector3::new(0.0, 0.0, 1.0);
