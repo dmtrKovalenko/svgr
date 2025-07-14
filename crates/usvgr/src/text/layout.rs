@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU16;
 use std::sync::Arc;
 
@@ -883,6 +883,11 @@ fn process_chunk(
     // but some can use `ﬁ` (U+FB01) instead.
     // Meaning that during merging we have to overwrite not individual glyphs, but clusters.
 
+    // Glyph splitting assigns distinct glyphs to the same index in the original text, we need to
+    // store previously used indices to make sure we do not re-use the same index while overwriting
+    // span glyphs.
+    let mut positions = HashSet::new();
+
     let mut glyphs = Vec::new();
     for span in &chunk.spans {
         let font = match fonts_cache.get(&span.font) {
@@ -905,6 +910,8 @@ fn process_chunk(
             continue;
         }
 
+        positions.clear();
+
         // Overwrite span's glyphs.
         let mut iter = tmp_glyphs.into_iter();
         while let Some(new_glyph) = iter.next() {
@@ -912,9 +919,15 @@ fn process_chunk(
                 continue;
             }
 
-            let Some(idx) = glyphs.iter().position(|g| g.byte_idx == new_glyph.byte_idx) else {
+            let Some(idx) = glyphs
+                .iter()
+                .position(|g| g.byte_idx == new_glyph.byte_idx)
+                .filter(|pos| !positions.contains(pos))
+            else {
                 continue;
             };
+
+            positions.insert(idx);
 
             let prev_cluster_len = glyphs[idx].cluster_len;
             if prev_cluster_len < new_glyph.cluster_len {
