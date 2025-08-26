@@ -64,7 +64,10 @@ pub(crate) fn resolve_fill(
     let mut sub_opacity = Opacity::ONE;
     let (paint, context_element) =
         if let Some(n) = node.ancestors().find(|n| n.has_attribute(AId::Fill)) {
-            convert_paint(n, AId::Fill, has_bbox, state, &mut sub_opacity, cache)?
+            // The paint value is taken from the ancestor that defines it,
+            // but it must be resolved (e.g. `currentColor`) relative to the
+            // current element.
+            convert_paint(node, n, AId::Fill, has_bbox, state, &mut sub_opacity, cache)?
         } else {
             (Paint::Color(Color::black()), None)
         };
@@ -95,7 +98,18 @@ pub(crate) fn resolve_stroke(
     let mut sub_opacity = Opacity::ONE;
     let (paint, context_element) =
         if let Some(n) = node.ancestors().find(|n| n.has_attribute(AId::Stroke)) {
-            convert_paint(n, AId::Stroke, has_bbox, state, &mut sub_opacity, cache)?
+            // The paint value is taken from the ancestor that defines it,
+            // but it must be resolved (e.g. `currentColor`) relative to the
+            // current element.
+            convert_paint(
+                node,
+                n,
+                AId::Stroke,
+                has_bbox,
+                state,
+                &mut sub_opacity,
+                cache,
+            )?
         } else {
             return None;
         };
@@ -128,13 +142,14 @@ pub(crate) fn resolve_stroke(
 
 fn convert_paint(
     node: SvgNode,
+    paint_node: SvgNode,
     aid: AId,
     has_bbox: bool,
     state: &converter::State,
     opacity: &mut Opacity,
     cache: &mut converter::Cache,
 ) -> Option<(Paint, Option<ContextElement>)> {
-    let paint = match node.attribute_value(aid)? {
+    let paint = match paint_node.attribute_value(aid)? {
         SvgAttributeValueRef::Color(color) => svgrtypes::Paint::Color(color),
         SvgAttributeValueRef::Str(text_paint) => match svgrtypes::Paint::from_str(text_paint) {
             Ok(v) => v,
