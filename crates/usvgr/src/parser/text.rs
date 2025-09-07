@@ -149,6 +149,7 @@ pub(crate) fn convert(
         &state.opt.font_resolver,
         state.fontdb,
         cache.usvgr_text_cache.as_ref(),
+        &mut cache.glyph_cache,
     ) {
         parent.children.push(Node::Text(Box::new(text)));
     }

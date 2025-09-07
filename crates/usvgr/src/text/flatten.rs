@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::collections::HashMap;
 use std::mem;
 use std::sync::Arc;
 
@@ -49,7 +50,44 @@ fn push_outline_paths(
     }
 }
 
-pub(crate) fn flatten(text: &mut Text, fontdb: &fontdb::Database) -> Option<(Group, NonZeroRect)> {
+/// A per-conversion cache of resolved glyphs.
+///
+/// Glyph lookups parse the font face and build outlines (or COLR/SVG/bitmap
+/// glyphs), so a glyph used many times in a document is resolved only once.
+/// It is keyed by font database IDs, so it must not outlive a single
+/// conversion with a single font database: it is cleared by
+/// [`Cache::clear`](crate::Cache::clear), which runs after every tree conversion.
+#[derive(Default)]
+pub(crate) struct GlyphCache {
+    glyphs: HashMap<(ID, GlyphId), Option<ResolvedGlyph>>,
+}
+
+impl GlyphCache {
+    pub(crate) fn clear(&mut self) {
+        self.glyphs.clear();
+    }
+
+    fn glyph(&mut self, fontdb: &Database, id: ID, glyph_id: GlyphId) -> Option<ResolvedGlyph> {
+        self.glyphs
+            .entry((id, glyph_id))
+            .or_insert_with(|| fontdb.glyph(id, glyph_id))
+            .clone()
+    }
+}
+
+impl std::fmt::Debug for GlyphCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GlyphCache")
+            .field("len", &self.glyphs.len())
+            .finish()
+    }
+}
+
+pub(crate) fn flatten(
+    text: &mut Text,
+    fontdb: &fontdb::Database,
+    glyph_cache: &mut GlyphCache,
+) -> Option<(Group, NonZeroRect)> {
     let mut new_children = vec![];
 
     let rendering_mode = resolve_rendering_mode(text);
@@ -78,7 +116,7 @@ pub(crate) fn flatten(text: &mut Text, fontdb: &fontdb::Database) -> Option<(Gro
         for glyph in &span.positioned_glyphs {
             // The font face is parsed only once per glyph and the glyph is resolved
             // in the same order as upstream: COLR, SVG, bitmap and finally the outline.
-            match fontdb.glyph(glyph.font, glyph.id) {
+            match glyph_cache.glyph(fontdb, glyph.font, glyph.id) {
                 // A (best-effort conversion of a) COLR glyph.
                 Some(ResolvedGlyph::Colr(tree)) => {
                     push_outline_paths(span, &mut span_builder, &mut new_children, rendering_mode);
@@ -202,6 +240,7 @@ pub(crate) trait DatabaseExt {
 }
 
 /// A glyph resolved from a font face.
+#[derive(Clone)]
 pub(crate) enum ResolvedGlyph {
     /// A (best-effort conversion of a) COLR glyph.
     Colr(Tree),
@@ -213,6 +252,7 @@ pub(crate) enum ResolvedGlyph {
     Outline(tiny_skia_path::Path),
 }
 
+#[derive(Clone)]
 pub(crate) struct BitmapImage {
     image: Image,
     x: i16,

@@ -10,7 +10,7 @@ use svgrtypes::{Length, LengthUnit as Unit, PaintOrderKind, TransformOrigin};
 use tiny_skia_path::Transform;
 
 #[cfg(feature = "text")]
-use crate::text::UsvgrTextOutlineCache;
+use crate::text::{GlyphCache, UsvgrTextOutlineCache};
 
 use super::svgtree::{self, AId, EId, FromValue, SvgNode};
 use super::units::{self, convert_length};
@@ -44,6 +44,9 @@ pub struct State<'a> {
 pub struct Cache {
     #[cfg(feature = "text")]
     pub usvgr_text_cache: Option<UsvgrTextOutlineCache>,
+    /// Resolved glyphs of the current conversion. Cleared by `clear`.
+    #[cfg(feature = "text")]
+    pub(crate) glyph_cache: GlyphCache,
     pub clip_paths: HashMap<String, Arc<ClipPath>>,
     pub masks: HashMap<String, Arc<Mask>>,
     pub filters: HashMap<String, Arc<filter::Filter>>,
@@ -71,6 +74,10 @@ impl Cache {
         self.filters.clear();
         self.all_ids.clear();
         self.paint.clear();
+        // Glyphs are keyed by font database IDs and the font database is
+        // provided per conversion, so they must not be reused across conversions.
+        #[cfg(feature = "text")]
+        self.glyph_cache.clear();
 
         self.linear_gradient_index = 0;
         self.radial_gradient_index = 0;
@@ -287,6 +294,10 @@ pub(crate) fn convert_doc(
     cache: &mut Cache,
     #[cfg(feature = "text")] fontdb: &fontdb::Database,
 ) -> Result<Tree, Error> {
+    // Resolved glyphs are only valid for the font database of this conversion.
+    #[cfg(feature = "text")]
+    cache.glyph_cache.clear();
+
     let svg = svg_doc.root_element();
     let (size, restore_viewbox) = resolve_svg_size(
         &svg,

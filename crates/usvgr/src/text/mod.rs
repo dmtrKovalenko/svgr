@@ -16,6 +16,8 @@ use crate::{Font, FontStretch, FontStyle, Text};
 mod colr;
 mod flatten;
 
+pub(crate) use flatten::GlyphCache;
+
 /// Provides access to the layout of a text node.
 pub mod layout;
 
@@ -221,6 +223,7 @@ pub(crate) fn convert_with_cache(
     resolver: &FontResolver,
     fontdb: &fontdb::Database,
     cache: Option<&UsvgrTextOutlineCache>,
+    glyph_cache: &mut GlyphCache,
 ) -> Option<Text> {
     match cache {
         Some(UsvgrTextOutlineCache {
@@ -233,13 +236,13 @@ pub(crate) fn convert_with_cache(
 
             cache
                 .borrow_mut()
-                .get_or_insert(hash, || convert(text, resolver, fontdb))
+                .get_or_insert(hash, || convert(text, resolver, fontdb, glyph_cache))
                 // TODO figure out if we can avoid cloning here
                 // it is pretty expensive but in order to convert his to Rc
                 // it needs to remove all the mutabalities around flattened
                 .clone()
         }
-        None => convert(text, resolver, fontdb),
+        None => convert(text, resolver, fontdb, glyph_cache),
     }
 }
 
@@ -252,13 +255,14 @@ pub(crate) fn convert(
     mut text: Text,
     resolver: &FontResolver,
     fontdb: &fontdb::Database,
+    glyph_cache: &mut GlyphCache,
 ) -> Option<Text> {
     let (text_fragments, bbox) = layout::layout_text(&text, resolver, fontdb)?;
     text.layouted = text_fragments;
     text.bounding_box = bbox.to_rect();
     text.abs_bounding_box = bbox.fast_transform(text.abs_transform)?.to_rect();
 
-    let (group, stroke_bbox) = flatten::flatten(&mut text, fontdb)?;
+    let (group, stroke_bbox) = flatten::flatten(&mut text, fontdb, glyph_cache)?;
     text.flattened = Box::new(group);
     text.stroke_bounding_box = stroke_bbox.to_rect();
     text.abs_stroke_bounding_box = stroke_bbox.fast_transform(text.abs_transform)?.to_rect();
