@@ -2137,7 +2137,7 @@ fn has_text_nodes(root: &Group) -> bool {
         }
     }
 
-    true
+    false
 }
 
 fn loop_over_paint_servers(parent: &Group, f: &mut dyn FnMut(&Paint)) {

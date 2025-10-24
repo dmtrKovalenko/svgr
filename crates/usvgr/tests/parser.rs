@@ -552,3 +552,18 @@ fn svgtree_names_roundtrip() {
         assert_eq!(eid.to_str(), name);
     }
 }
+
+#[test]
+fn no_text_nodes() {
+    let svg = "
+    <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>
+        <g transform='translate(20)'>
+            <path transform='translate(10)' d='M 0 0 L 10 10'/>
+        </g>
+    </svg>
+    ";
+
+    let fontdb = usvgr::fontdb::Database::new();
+    let tree = usvgr::Tree::from_str(&svg, &usvgr::Options::default(), &fontdb).unwrap();
+    assert!(!tree.has_text_nodes());
+}
