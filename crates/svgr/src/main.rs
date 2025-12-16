@@ -670,17 +670,16 @@ fn render_svg(args: &Args, tree: &usvgr::Tree) -> Result<tiny_skia::Pixmap, Stri
             None => return Err(format!("SVG doesn't have '{}' ID", id)),
         };
 
-        let bbox = node
-            .abs_layer_bounding_box()
-            .ok_or_else(|| "node has zero size".to_string())?;
+        let bbox = node.abs_layer_bounding_box().ok_or("node has zero size")?;
 
         let size = args
             .fit_to
             .fit_to_size(bbox.size().to_int_size())
-            .ok_or_else(|| "target size is zero".to_string())?;
+            .ok_or("target size is zero")?;
 
-        // Unwrap is safe, because `size` is already valid.
-        let mut pixmap = tiny_skia::Pixmap::new(size.width(), size.height()).unwrap();
+        // Pixmap's width is limited by i32::MAX/4, we handle the creation error.
+        let mut pixmap =
+            tiny_skia::Pixmap::new(size.width(), size.height()).ok_or("cannot create pixmap")?;
 
         if !args.export_area_page {
             if let Some(background) = args.background {
@@ -708,10 +707,11 @@ fn render_svg(args: &Args, tree: &usvgr::Tree) -> Result<tiny_skia::Pixmap, Stri
             let size = args
                 .fit_to
                 .fit_to_size(tree.size().to_int_size())
-                .ok_or_else(|| "target size is zero".to_string())?;
+                .ok_or("target size is zero")?;
 
-            // Unwrap is safe, because `size` is already valid.
-            let mut page_pixmap = tiny_skia::Pixmap::new(size.width(), size.height()).unwrap();
+            // Pixmap's width is limited by i32::MAX/4, we handle the creation error.
+            let mut page_pixmap = tiny_skia::Pixmap::new(size.width(), size.height())
+                .ok_or("cannot create pixmap")?;
 
             if let Some(background) = args.background {
                 page_pixmap.fill(svg_to_skia_color(background));
@@ -733,10 +733,11 @@ fn render_svg(args: &Args, tree: &usvgr::Tree) -> Result<tiny_skia::Pixmap, Stri
         let size = args
             .fit_to
             .fit_to_size(tree.size().to_int_size())
-            .ok_or_else(|| "target size is zero".to_string())?;
+            .ok_or("target size is zero")?;
 
-        // Unwrap is safe, because `size` is already valid.
-        let mut pixmap = tiny_skia::Pixmap::new(size.width(), size.height()).unwrap();
+        // Pixmap's width is limited by i32::MAX/4, we handle the creation error.
+        let mut pixmap =
+            tiny_skia::Pixmap::new(size.width(), size.height()).ok_or("cannot create pixmap")?;
 
         if let Some(background) = args.background {
             pixmap.fill(svg_to_skia_color(background));
