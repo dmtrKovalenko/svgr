@@ -48,6 +48,11 @@ pub struct PositionedGlyph {
 }
 
 impl PositionedGlyph {
+    /// Returns the font size for this glyph.
+    pub fn font_size(&self) -> f32 {
+        self.font_size
+    }
+
     /// Returns the transform of glyph.
     pub fn transform(&self) -> Transform {
         let sx = self.font_size / self.units_per_em as f32;
@@ -147,6 +152,10 @@ pub struct Span {
     pub paint_order: PaintOrder,
     /// The font size of the span.
     pub font_size: NonZeroPositiveF32,
+    /// Font variation settings for variable fonts.
+    pub variations: Vec<crate::FontVariation>,
+    /// Font optical sizing mode.
+    pub font_optical_sizing: crate::FontOpticalSizing,
     /// The visibility of the span.
     pub visibility: Visibility,
     /// The glyphs that make up the span.
@@ -343,6 +352,8 @@ pub(crate) fn layout_text(
                     stroke: span.stroke.clone(),
                     paint_order: span.paint_order,
                     font_size: span.font_size,
+                    variations: span.font.variations.clone(),
+                    font_optical_sizing: span.font_optical_sizing,
                     visibility: span.visibility,
                     positioned_glyphs,
                     underline,
@@ -900,6 +911,9 @@ fn process_chunk(
             font,
             span.small_caps,
             span.apply_kerning,
+            &span.font.variations,
+            span.font_size.get(),
+            span.font_optical_sizing,
             resolver,
             fontdb,
         );
@@ -1284,11 +1298,23 @@ pub(crate) fn shape_text(
     font: Arc<ResolvedFont>,
     small_caps: bool,
     apply_kerning: bool,
+    variations: &[crate::FontVariation],
+    font_size: f32,
+    font_optical_sizing: crate::FontOpticalSizing,
     resolver: &FontResolver,
     fontdb: &fontdb::Database,
 ) -> Vec<Glyph> {
-    let mut glyphs = shape_text_with_font(text, font.clone(), small_caps, apply_kerning, fontdb)
-        .unwrap_or_default();
+    let mut glyphs = shape_text_with_font(
+        text,
+        font.clone(),
+        small_caps,
+        apply_kerning,
+        variations,
+        font_size,
+        font_optical_sizing,
+        fontdb,
+    )
+    .unwrap_or_default();
 
     // Remember all fonts used for shaping.
     let mut used_fonts = vec![font.id];
@@ -1317,6 +1343,9 @@ pub(crate) fn shape_text(
                 fallback_font.clone(),
                 small_caps,
                 apply_kerning,
+                variations,
+                font_size,
+                font_optical_sizing,
                 fontdb,
             )
             .unwrap_or_default();
@@ -1374,10 +1403,49 @@ fn shape_text_with_font(
     font: Arc<ResolvedFont>,
     small_caps: bool,
     apply_kerning: bool,
+    variations: &[crate::FontVariation],
+    font_size: f32,
+    font_optical_sizing: crate::FontOpticalSizing,
     fontdb: &fontdb::Database,
 ) -> Option<Vec<Glyph>> {
     fontdb.with_face_data(font.id, |font_data, face_index| -> Option<Vec<Glyph>> {
-        let rb_font = rustybuzz::Face::from_slice(font_data, face_index)?;
+        let mut rb_font = rustybuzz::Face::from_slice(font_data, face_index)?;
+
+        // Build the list of variations to apply
+        let mut final_variations: Vec<rustybuzz::Variation> = variations
+            .iter()
+            .map(|v| rustybuzz::Variation {
+                tag: ttf_parser::Tag::from_bytes(&v.tag),
+                value: v.value,
+            })
+            .collect();
+
+        // Automatic optical sizing: if font-optical-sizing is auto and the font has
+        // an 'opsz' axis that isn't explicitly set, auto-set it to match font size.
+        // This matches browser behavior (CSS font-optical-sizing: auto).
+        if font_optical_sizing == crate::FontOpticalSizing::Auto {
+            let has_explicit_opsz = variations.iter().any(|v| v.tag == *b"opsz");
+            if !has_explicit_opsz {
+                // Check if font has opsz axis using the already parsed rb_font
+                if let Some(axes) = rb_font.tables().fvar {
+                    let has_opsz_axis = axes
+                        .axes
+                        .into_iter()
+                        .any(|axis| axis.tag == ttf_parser::Tag::from_bytes(b"opsz"));
+                    if has_opsz_axis {
+                        final_variations.push(rustybuzz::Variation {
+                            tag: ttf_parser::Tag::from_bytes(b"opsz"),
+                            value: font_size,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Apply font variations for variable fonts
+        if !final_variations.is_empty() {
+            rb_font.set_variations(&final_variations);
+        }
 
         let bidi_info = unicode_bidi::BidiInfo::new(text, Some(unicode_bidi::Level::ltr()));
         let paragraph = &bidi_info.paragraphs[0];

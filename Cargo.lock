@@ -1569,6 +1569,7 @@ dependencies = [
  "strict-num",
  "svgrtypes",
  "tiny-skia-path",
+ "ttf-parser",
  "unicode-bidi",
  "unicode-script",
  "unicode-vo",

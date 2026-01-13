@@ -60,11 +60,22 @@ fn push_outline_paths(
 #[derive(Default)]
 pub(crate) struct GlyphCache {
     glyphs: HashMap<(ID, GlyphId), Option<ResolvedGlyph>>,
+    /// Per-face variable font info: `(is_variable, has_opsz_axis)`.
+    variable_fonts: HashMap<ID, (bool, bool)>,
 }
 
 impl GlyphCache {
     pub(crate) fn clear(&mut self) {
         self.glyphs.clear();
+        self.variable_fonts.clear();
+    }
+
+    /// Returns `(is_variable, has_opsz_axis)` for a font face.
+    fn variable_font_info(&mut self, fontdb: &Database, id: ID) -> (bool, bool) {
+        *self
+            .variable_fonts
+            .entry(id)
+            .or_insert_with(|| fontdb.variable_font_info(id))
     }
 
     fn glyph(&mut self, fontdb: &Database, id: ID, glyph_id: GlyphId) -> Option<ResolvedGlyph> {
@@ -112,6 +123,10 @@ pub(crate) fn flatten(
         // to create a new path for every glyph if we have many consecutive glyphs
         // with just outlines (which is the most common case).
         let mut span_builder = tiny_skia_path::PathBuilder::new();
+
+        // For variable fonts, we need to extract the outline with variations applied.
+        // We can't use the glyph cache here since the outline depends on variation values.
+        let has_explicit_variations = !span.variations.is_empty();
 
         for glyph in &span.positioned_glyphs {
             // The font face is parsed only once per glyph and the glyph is resolved
@@ -177,7 +192,31 @@ pub(crate) fn flatten(
                     new_children.push(Node::Group(Box::new(group)));
                 }
                 Some(ResolvedGlyph::Outline(outline)) => {
-                    if let Some(outline) = outline.transform(glyph.outline_transform()) {
+                    // Only bypass the cache for variable fonts with either explicit
+                    // variations or auto optical sizing on a font with an `opsz` axis.
+                    // Non-variable fonts ignore variations, so the cached outline is exact.
+                    let (is_variable, has_opsz) =
+                        glyph_cache.variable_font_info(fontdb, glyph.font);
+                    let needs_variations = is_variable
+                        && (has_explicit_variations
+                            || (span.font_optical_sizing == crate::FontOpticalSizing::Auto
+                                && has_opsz));
+
+                    let outline = if needs_variations {
+                        fontdb.outline_with_variations(
+                            glyph.font,
+                            glyph.id,
+                            &span.variations,
+                            glyph.font_size(),
+                            span.font_optical_sizing,
+                        )
+                    } else {
+                        Some(outline)
+                    };
+
+                    if let Some(outline) =
+                        outline.and_then(|p| p.transform(glyph.outline_transform()))
+                    {
                         span_builder.push_path(&outline);
                     }
                 }
@@ -237,6 +276,16 @@ impl ttf_parser::OutlineBuilder for PathBuilder {
 
 pub(crate) trait DatabaseExt {
     fn glyph(&self, id: ID, glyph_id: GlyphId) -> Option<ResolvedGlyph>;
+    fn outline_with_variations(
+        &self,
+        id: ID,
+        glyph_id: GlyphId,
+        variations: &[crate::FontVariation],
+        font_size: f32,
+        font_optical_sizing: crate::FontOpticalSizing,
+    ) -> Option<tiny_skia_path::Path>;
+    /// Returns `(is_variable, has_opsz_axis)`.
+    fn variable_font_info(&self, id: ID) -> (bool, bool);
 }
 
 /// A glyph resolved from a font face.
@@ -267,7 +316,7 @@ impl DatabaseExt for Database {
     #[inline(never)]
     fn glyph(&self, id: ID, glyph_id: GlyphId) -> Option<ResolvedGlyph> {
         self.with_face_data(id, |data, face_index| -> Option<ResolvedGlyph> {
-            let font = ttf_parser::Face::parse(data, face_index).ok()?;
+            let mut font = ttf_parser::Face::parse(data, face_index).ok()?;
             let tables = font.tables();
 
             if tables.colr.is_some() {
@@ -292,9 +341,61 @@ impl DatabaseExt for Database {
                 }
             }
 
+            // For variable fonts, we need to set default variation values to get proper outlines
+            if font.is_variable() {
+                for axis in font.variation_axes() {
+                    font.set_variation(axis.tag, axis.def_value);
+                }
+            }
+
             outline(&font, glyph_id).map(ResolvedGlyph::Outline)
         })?
     }
+
+    #[inline(never)]
+    fn outline_with_variations(
+        &self,
+        id: ID,
+        glyph_id: GlyphId,
+        variations: &[crate::FontVariation],
+        font_size: f32,
+        font_optical_sizing: crate::FontOpticalSizing,
+    ) -> Option<tiny_skia_path::Path> {
+        self.with_face_data(id, |data, face_index| -> Option<tiny_skia_path::Path> {
+            let mut font = ttf_parser::Face::parse(data, face_index).ok()?;
+
+            for v in variations {
+                font.set_variation(ttf_parser::Tag::from_bytes(&v.tag), v.value);
+            }
+
+            // Auto-set opsz if font-optical-sizing is auto and not explicitly set
+            if font_optical_sizing == crate::FontOpticalSizing::Auto {
+                let has_explicit_opsz = variations.iter().any(|v| v.tag == *b"opsz");
+                if !has_explicit_opsz && face_has_opsz_axis(&font) {
+                    font.set_variation(ttf_parser::Tag::from_bytes(b"opsz"), font_size);
+                }
+            }
+
+            outline(&font, glyph_id)
+        })?
+    }
+
+    fn variable_font_info(&self, id: ID) -> (bool, bool) {
+        self.with_face_data(id, |data, face_index| -> Option<(bool, bool)> {
+            let font = ttf_parser::Face::parse(data, face_index).ok()?;
+            Some((font.is_variable(), face_has_opsz_axis(&font)))
+        })
+        .flatten()
+        .unwrap_or((false, false))
+    }
+}
+
+fn face_has_opsz_axis(font: &ttf_parser::Face) -> bool {
+    font.tables().fvar.map_or(false, |axes| {
+        axes.axes
+            .into_iter()
+            .any(|axis| axis.tag == ttf_parser::Tag::from_bytes(b"opsz"))
+    })
 }
 
 fn outline(font: &ttf_parser::Face, glyph_id: GlyphId) -> Option<tiny_skia_path::Path> {
