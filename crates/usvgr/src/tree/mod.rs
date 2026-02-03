@@ -383,6 +383,7 @@ pub struct RadialGradient {
     pub(crate) r: PositiveF32,
     pub(crate) fx: f32,
     pub(crate) fy: f32,
+    pub(crate) fr: PositiveF32,
 }
 
 impl std::hash::Hash for RadialGradient {
@@ -393,6 +394,7 @@ impl std::hash::Hash for RadialGradient {
         self.r.hash(state);
         self.fx.to_bits().hash(state);
         self.fy.to_bits().hash(state);
+        self.fr.hash(state);
         self.base.hash(state);
     }
 }
@@ -421,6 +423,11 @@ impl RadialGradient {
     /// `fy` coordinate.
     pub fn fy(&self) -> f32 {
         self.fy
+    }
+
+    /// Focal radius.
+    pub fn fr(&self) -> PositiveF32 {
+        self.fr
     }
 }
 

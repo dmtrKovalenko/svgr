@@ -22,7 +22,7 @@ base64 = { version = "0.22", optional = true } # for embedded images
 log = "0.4"
 strict-num = "0.1.1"
 svgrtypes = { version = "0.46.1", path = "../svgrtypes" }
-tiny-skia-path = "0.11.4"
+tiny-skia-path = "0.12.0"
 xmlwriter = { version = "0.1", optional = true }
 
 # parser
