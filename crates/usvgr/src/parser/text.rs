@@ -139,6 +139,7 @@ pub(crate) fn convert(
         stroke_bounding_box: dummy,
         abs_stroke_bounding_box: dummy,
         flattened: Box::new(Group::empty()),
+        static_hash: text_node.static_hash(),
     };
 
     if let Some(text) = crate::text_to_paths::convert_with_cache(

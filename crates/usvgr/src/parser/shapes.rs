@@ -7,7 +7,7 @@ use std::sync::Arc;
 use svgrtypes::Length;
 use tiny_skia_path::Path;
 
-use super::svgtree::{AId, EId, SvgNode};
+use super::svgtree::{AId, EId, SvgAttributeValueRef, SvgNode};
 use super::{converter, units};
 use crate::{ApproxEqUlps, IsValidLength, Rect};
 
@@ -25,7 +25,223 @@ pub(crate) fn convert(node: SvgNode, state: &converter::State) -> Option<Arc<Pat
 }
 
 pub(crate) fn convert_path(node: SvgNode) -> Option<Arc<Path>> {
-    let value: &str = node.attribute(AId::D)?;
+    let attr_value = node.attribute_value(AId::D)?;
+
+    match attr_value {
+        // Fast path: use pre-parsed path data from compile-time
+        SvgAttributeValueRef::PathData(segments) => convert_path_from_segments(segments),
+        // Slow path: parse path data at runtime
+        SvgAttributeValueRef::Str(value) => convert_path_from_string(value),
+        _ => None,
+    }
+}
+
+/// Convert pre-parsed path segments to a Path
+fn convert_path_from_segments(segments: &[svgrtypes::PathSegment]) -> Option<Arc<Path>> {
+    use svgrtypes::PathSegment;
+
+    let mut builder = tiny_skia_path::PathBuilder::new();
+
+    // We need to simplify path segments (convert relative to absolute, expand arcs, etc.)
+    // This mirrors what SimplifyingPathParser does
+    let mut prev_x = 0.0f64;
+    let mut prev_y = 0.0f64;
+    let mut prev_mx = 0.0f64;
+    let mut prev_my = 0.0f64;
+
+    // For smooth curves, we need to track the absolute second control point
+    // from the previous CurveTo or SmoothCurveTo command
+    let mut prev_cubic_ctrl: Option<(f64, f64)> = None;
+    // For smooth quadratics, we need to track the absolute control point
+    // from the previous Quadratic or SmoothQuadratic command
+    let mut prev_quad_ctrl: Option<(f64, f64)> = None;
+
+    for segment in segments {
+        match segment {
+            PathSegment::MoveTo { abs, x, y } => {
+                let (x, y) = if *abs {
+                    (*x, *y)
+                } else {
+                    (prev_x + x, prev_y + y)
+                };
+                builder.move_to(x as f32, y as f32);
+                prev_x = x;
+                prev_y = y;
+                prev_mx = x;
+                prev_my = y;
+                prev_cubic_ctrl = None;
+                prev_quad_ctrl = None;
+            }
+            PathSegment::LineTo { abs, x, y } => {
+                let (x, y) = if *abs {
+                    (*x, *y)
+                } else {
+                    (prev_x + x, prev_y + y)
+                };
+                builder.line_to(x as f32, y as f32);
+                prev_x = x;
+                prev_y = y;
+                prev_cubic_ctrl = None;
+                prev_quad_ctrl = None;
+            }
+            PathSegment::HorizontalLineTo { abs, x } => {
+                let x = if *abs { *x } else { prev_x + x };
+                builder.line_to(x as f32, prev_y as f32);
+                prev_x = x;
+                prev_cubic_ctrl = None;
+                prev_quad_ctrl = None;
+            }
+            PathSegment::VerticalLineTo { abs, y } => {
+                let y = if *abs { *y } else { prev_y + y };
+                builder.line_to(prev_x as f32, y as f32);
+                prev_y = y;
+                prev_cubic_ctrl = None;
+                prev_quad_ctrl = None;
+            }
+            PathSegment::CurveTo {
+                abs,
+                x1,
+                y1,
+                x2,
+                y2,
+                x,
+                y,
+            } => {
+                let (x1, y1, x2, y2, x, y) = if *abs {
+                    (*x1, *y1, *x2, *y2, *x, *y)
+                } else {
+                    (
+                        prev_x + x1,
+                        prev_y + y1,
+                        prev_x + x2,
+                        prev_y + y2,
+                        prev_x + x,
+                        prev_y + y,
+                    )
+                };
+                builder.cubic_to(
+                    x1 as f32, y1 as f32, x2 as f32, y2 as f32, x as f32, y as f32,
+                );
+                prev_x = x;
+                prev_y = y;
+                prev_cubic_ctrl = Some((x2, y2));
+                prev_quad_ctrl = None;
+            }
+            PathSegment::SmoothCurveTo { abs, x2, y2, x, y } => {
+                // The first control point is the reflection of the second control point
+                // of the previous CurveTo or SmoothCurveTo command relative to the current point.
+                // If there was no previous such command, use the current point.
+                let (x1, y1) = match prev_cubic_ctrl {
+                    Some((ctrl_x, ctrl_y)) => (prev_x * 2.0 - ctrl_x, prev_y * 2.0 - ctrl_y),
+                    None => (prev_x, prev_y),
+                };
+                let (x2, y2, x, y) = if *abs {
+                    (*x2, *y2, *x, *y)
+                } else {
+                    (prev_x + x2, prev_y + y2, prev_x + x, prev_y + y)
+                };
+                builder.cubic_to(
+                    x1 as f32, y1 as f32, x2 as f32, y2 as f32, x as f32, y as f32,
+                );
+                prev_x = x;
+                prev_y = y;
+                prev_cubic_ctrl = Some((x2, y2));
+                prev_quad_ctrl = None;
+            }
+            PathSegment::Quadratic { abs, x1, y1, x, y } => {
+                let (x1, y1, x, y) = if *abs {
+                    (*x1, *y1, *x, *y)
+                } else {
+                    (prev_x + x1, prev_y + y1, prev_x + x, prev_y + y)
+                };
+                builder.quad_to(x1 as f32, y1 as f32, x as f32, y as f32);
+                prev_x = x;
+                prev_y = y;
+                prev_cubic_ctrl = None;
+                prev_quad_ctrl = Some((x1, y1));
+            }
+            PathSegment::SmoothQuadratic { abs, x, y } => {
+                // The control point is the reflection of the control point
+                // of the previous Quadratic or SmoothQuadratic command relative to the current point.
+                // If there was no previous such command, use the current point.
+                let (x1, y1) = match prev_quad_ctrl {
+                    Some((ctrl_x, ctrl_y)) => (prev_x * 2.0 - ctrl_x, prev_y * 2.0 - ctrl_y),
+                    None => (prev_x, prev_y),
+                };
+                let (x, y) = if *abs {
+                    (*x, *y)
+                } else {
+                    (prev_x + x, prev_y + y)
+                };
+                builder.quad_to(x1 as f32, y1 as f32, x as f32, y as f32);
+                prev_x = x;
+                prev_y = y;
+                prev_cubic_ctrl = None;
+                prev_quad_ctrl = Some((x1, y1));
+            }
+            PathSegment::EllipticalArc {
+                abs,
+                rx,
+                ry,
+                x_axis_rotation,
+                large_arc,
+                sweep,
+                x,
+                y,
+            } => {
+                let (x, y) = if *abs {
+                    (*x, *y)
+                } else {
+                    (prev_x + x, prev_y + y)
+                };
+
+                let svg_arc = kurbo::SvgArc {
+                    from: kurbo::Point::new(prev_x, prev_y),
+                    to: kurbo::Point::new(x, y),
+                    radii: kurbo::Vec2::new(*rx, *ry),
+                    x_rotation: x_axis_rotation.to_radians(),
+                    large_arc: *large_arc,
+                    sweep: *sweep,
+                };
+
+                match kurbo::Arc::from_svg_arc(&svg_arc) {
+                    Some(arc) => {
+                        arc.to_cubic_beziers(0.1, |p1, p2, p| {
+                            builder.cubic_to(
+                                p1.x as f32,
+                                p1.y as f32,
+                                p2.x as f32,
+                                p2.y as f32,
+                                p.x as f32,
+                                p.y as f32,
+                            );
+                        });
+                    }
+                    None => {
+                        builder.line_to(x as f32, y as f32);
+                    }
+                }
+
+                prev_x = x;
+                prev_y = y;
+                prev_cubic_ctrl = None;
+                prev_quad_ctrl = None;
+            }
+            PathSegment::ClosePath { .. } => {
+                builder.close();
+                prev_x = prev_mx;
+                prev_y = prev_my;
+                prev_cubic_ctrl = None;
+                prev_quad_ctrl = None;
+            }
+        }
+    }
+
+    builder.finish().map(Arc::new)
+}
+
+/// Convert string path data to a Path (original implementation)
+fn convert_path_from_string(value: &str) -> Option<Arc<Path>> {
     let mut builder = tiny_skia_path::PathBuilder::new();
     for segment in svgrtypes::SimplifyingPathParser::from(value) {
         let segment = match segment {

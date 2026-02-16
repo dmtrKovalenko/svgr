@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #![allow(missing_docs)]
+use std::borrow::Cow;
 use std::num::NonZeroU32;
 use std::str::FromStr;
 use std::{collections::HashMap, sync::Arc};
@@ -58,7 +59,7 @@ impl NestedNodeData<'_> {
     pub(crate) fn find_recursively(
         &self,
         predicate: &impl Fn(&NestedNodeData) -> bool,
-    ) -> Option<&NestedNodeData> {
+    ) -> Option<&NestedNodeData<'_>> {
         for node in self.children.iter().flatten() {
             if predicate(node) {
                 return Some(node);
@@ -70,6 +71,53 @@ impl NestedNodeData<'_> {
         }
 
         None
+    }
+
+    /// Compute a runtime hash of this node's content by hashing all attribute values
+    /// and children recursively. Used by the svgr macro to compute stable hashes for
+    /// nodes that have runtime-evaluated but frame-independent expressions.
+    ///
+    /// The `seed` parameter incorporates compile-time-known structural information
+    /// (element types, attribute names, literal values) to differentiate structurally
+    /// different nodes that may have the same runtime values.
+    pub fn compute_runtime_hash(&self, seed: u64) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+        seed.hash(&mut hasher);
+
+        // Hash all attribute values
+        for attr in &self.attrs {
+            format!("{}", attr.value).hash(&mut hasher);
+        }
+
+        // Hash children recursively
+        Self::hash_children(&self.children, &mut hasher);
+
+        hasher.finish()
+    }
+
+    fn hash_children(children: &[Option<NestedNodeData>], hasher: &mut impl std::hash::Hasher) {
+        use std::hash::Hash;
+
+        for child in children.iter().flatten() {
+            match &child.kind {
+                NestedNodeKind::Text(text) => {
+                    text.as_str().hash(hasher);
+                }
+                NestedNodeKind::Element { tag_name } => {
+                    format!("{:?}", tag_name).hash(hasher);
+                    for attr in &child.attrs {
+                        format!("{}", attr.value).hash(hasher);
+                    }
+                    Self::hash_children(&child.children, hasher);
+                }
+                NestedNodeKind::Root => {
+                    Self::hash_children(&child.children, hasher);
+                }
+            }
+        }
     }
 }
 
@@ -292,6 +340,8 @@ struct NodeData {
     next_sibling: Option<NodeId>,
     children: Option<(NodeId, NodeId)>,
     kind: NodeKind,
+    /// Pre-computed static hash for cache optimization (from NestedNodeData)
+    static_hash: Option<u64>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -337,6 +387,10 @@ pub struct NestedNodeData<'input> {
     pub kind: NestedNodeKind<'input>,
     pub attrs: Vec<Attribute<'input>>,
     pub children: Vec<Option<NestedNodeData<'input>>>,
+    /// Pre-computed hash for cache optimization.
+    /// If Some, the cache can use this directly instead of computing at runtime.
+    /// This is set at compile-time by svgr-macro for fully static nodes.
+    pub static_hash: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -347,6 +401,9 @@ pub enum SvgAttributeValue<'a> {
     Color(svgrtypes::Color),
     StringStorage(StringStorage<'a>),
     ImageData(Arc<PreloadedImageData>),
+    /// Pre-parsed SVG path data for compile-time optimization.
+    /// Uses Cow to allow both static slices (compile-time) and owned Vecs (runtime).
+    PathData(Cow<'a, [svgrtypes::PathSegment]>),
 }
 
 impl From<String> for SvgAttributeValue<'_> {
@@ -422,6 +479,18 @@ impl From<svgrtypes::Transform> for SvgAttributeValue<'_> {
     }
 }
 
+impl From<Vec<svgrtypes::PathSegment>> for SvgAttributeValue<'_> {
+    fn from(v: Vec<svgrtypes::PathSegment>) -> Self {
+        SvgAttributeValue::PathData(Cow::Owned(v))
+    }
+}
+
+impl<'a> From<&'a [svgrtypes::PathSegment]> for SvgAttributeValue<'a> {
+    fn from(v: &'a [svgrtypes::PathSegment]) -> Self {
+        SvgAttributeValue::PathData(Cow::Borrowed(v))
+    }
+}
+
 impl<'a> SvgAttributeValue<'a> {
     pub fn as_ref(&'a self) -> SvgAttributeValueRef<'a> {
         match self {
@@ -431,6 +500,9 @@ impl<'a> SvgAttributeValue<'a> {
             SvgAttributeValue::Transform(v) => SvgAttributeValueRef::Transform(*v),
             SvgAttributeValue::Color(c) => SvgAttributeValueRef::Color(*c),
             SvgAttributeValue::ImageData(image) => SvgAttributeValueRef::ImageData(&image),
+            SvgAttributeValue::PathData(segments) => {
+                SvgAttributeValueRef::PathData(segments.as_ref())
+            }
         }
     }
 }
@@ -447,6 +519,9 @@ impl std::fmt::Display for SvgAttributeValue<'_> {
                 red, green, blue, ..
             }) => write!(f, "rgb({red}, {green}, {blue})"),
             SvgAttributeValue::ImageData(ref image) => write!(f, "{:?}", image.id),
+            SvgAttributeValue::PathData(segments) => {
+                write!(f, "<path data with {} segments>", segments.len())
+            }
         }
     }
 }
@@ -491,6 +566,13 @@ impl<'a, 'input: 'a> SvgNode<'a, 'input> {
     #[inline]
     fn id(&self) -> NodeId {
         self.id
+    }
+
+    /// Returns the pre-computed static hash for this node, if any.
+    /// This is set at compile-time by svgr-macro for fully static nodes.
+    #[inline]
+    pub fn static_hash(&self) -> Option<u64> {
+        self.d.static_hash
     }
 
     /// Checks if the current node is an element.
@@ -1080,6 +1162,8 @@ pub enum SvgAttributeValueRef<'a> {
     Transform(svgrtypes::Transform),
     Color(svgrtypes::Color),
     ImageData(&'a Arc<PreloadedImageData>),
+    /// Pre-parsed SVG path data
+    PathData(&'a [svgrtypes::PathSegment]),
 }
 
 impl<'a> SvgAttributeValueRef<'a> {

@@ -35,6 +35,10 @@ pub use render::Context;
 /// `transform` will be used as a root transform.
 /// Can be used to position SVG inside the `pixmap`.
 ///
+/// The cache provides both LRU caching for dynamic elements and permanent caching
+/// for static elements (those with compile-time known content identified by `static_hash`).
+/// Static elements are rendered once and cached permanently, never re-rendered.
+///
 /// The produced content is in the sRGB color space.
 pub fn render(
     tree: &usvgr::Tree,

@@ -520,6 +520,9 @@ pub struct Text {
     pub(crate) stroke_bounding_box: Rect,
     pub(crate) abs_stroke_bounding_box: Rect,
     pub(crate) flattened: Box<Group>,
+    /// Pre-computed static hash for cache optimization.
+    /// Propagated to the flattened Group after text-to-paths conversion.
+    pub(crate) static_hash: Option<u64>,
 }
 
 impl std::hash::Hash for Text {

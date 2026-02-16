@@ -1,4 +1,4 @@
-use crate::{Error, Stream};
+use crate::{tokens_helper::TokenizableNumber, Error, Stream};
 
 /// Representation of the path segment.
 ///
@@ -67,6 +67,72 @@ pub enum PathSegment {
     ClosePath {
         abs: bool,
     },
+}
+
+impl quote::ToTokens for PathSegment {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        use quote::quote;
+        match self {
+            PathSegment::MoveTo { abs, x, y } => {
+                let x = TokenizableNumber(*x);
+                let y = TokenizableNumber(*y);
+                quote! { svgrtypes::PathSegment::MoveTo { abs: #abs, x: #x, y: #y } }
+            }
+            PathSegment::LineTo { abs, x, y } => {
+                let x = TokenizableNumber(*x);
+                let y = TokenizableNumber(*y);
+                quote! { svgrtypes::PathSegment::LineTo { abs: #abs, x: #x, y: #y } }
+            }
+            PathSegment::HorizontalLineTo { abs, x } => {
+                let x = TokenizableNumber(*x);
+                quote! { svgrtypes::PathSegment::HorizontalLineTo { abs: #abs, x: #x } }
+            }
+            PathSegment::VerticalLineTo { abs, y } => {
+                let y = TokenizableNumber(*y);
+                quote! { svgrtypes::PathSegment::VerticalLineTo { abs: #abs, y: #y } }
+            }
+            PathSegment::CurveTo { abs, x1, y1, x2, y2, x, y } => {
+                let x1 = TokenizableNumber(*x1);
+                let y1 = TokenizableNumber(*y1);
+                let x2 = TokenizableNumber(*x2);
+                let y2 = TokenizableNumber(*y2);
+                let x = TokenizableNumber(*x);
+                let y = TokenizableNumber(*y);
+                quote! { svgrtypes::PathSegment::CurveTo { abs: #abs, x1: #x1, y1: #y1, x2: #x2, y2: #y2, x: #x, y: #y } }
+            }
+            PathSegment::SmoothCurveTo { abs, x2, y2, x, y } => {
+                let x2 = TokenizableNumber(*x2);
+                let y2 = TokenizableNumber(*y2);
+                let x = TokenizableNumber(*x);
+                let y = TokenizableNumber(*y);
+                quote! { svgrtypes::PathSegment::SmoothCurveTo { abs: #abs, x2: #x2, y2: #y2, x: #x, y: #y } }
+            }
+            PathSegment::Quadratic { abs, x1, y1, x, y } => {
+                let x1 = TokenizableNumber(*x1);
+                let y1 = TokenizableNumber(*y1);
+                let x = TokenizableNumber(*x);
+                let y = TokenizableNumber(*y);
+                quote! { svgrtypes::PathSegment::Quadratic { abs: #abs, x1: #x1, y1: #y1, x: #x, y: #y } }
+            }
+            PathSegment::SmoothQuadratic { abs, x, y } => {
+                let x = TokenizableNumber(*x);
+                let y = TokenizableNumber(*y);
+                quote! { svgrtypes::PathSegment::SmoothQuadratic { abs: #abs, x: #x, y: #y } }
+            }
+            PathSegment::EllipticalArc { abs, rx, ry, x_axis_rotation, large_arc, sweep, x, y } => {
+                let rx = TokenizableNumber(*rx);
+                let ry = TokenizableNumber(*ry);
+                let x_axis_rotation = TokenizableNumber(*x_axis_rotation);
+                let x = TokenizableNumber(*x);
+                let y = TokenizableNumber(*y);
+                quote! { svgrtypes::PathSegment::EllipticalArc { abs: #abs, rx: #rx, ry: #ry, x_axis_rotation: #x_axis_rotation, large_arc: #large_arc, sweep: #sweep, x: #x, y: #y } }
+            }
+            PathSegment::ClosePath { abs } => {
+                quote! { svgrtypes::PathSegment::ClosePath { abs: #abs } }
+            }
+        }
+        .to_tokens(tokens)
+    }
 }
 
 /// A pull-based [path data] parser.

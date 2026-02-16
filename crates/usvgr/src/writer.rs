@@ -630,6 +630,7 @@ fn write_text_path_paths(parent: &Group, opt: &WriteOptions, xml: &mut XmlWriter
                         ShapeRendering::default(),
                         text_path.path.clone(),
                         Transform::default(),
+                        None, // static_hash - writer paths don't need caching
                     );
                     if let Some(ref path) = path {
                         write_path(path, false, Transform::default(), None, opt, xml);

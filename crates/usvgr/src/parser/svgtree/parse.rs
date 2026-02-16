@@ -27,12 +27,22 @@ impl<'input> Document<'input> {
     }
 
     pub(crate) fn append(&mut self, parent_id: NodeId, kind: NodeKind) -> NodeId {
+        self.append_with_static_hash(parent_id, kind, None)
+    }
+
+    pub(crate) fn append_with_static_hash(
+        &mut self,
+        parent_id: NodeId,
+        kind: NodeKind,
+        static_hash: Option<u64>,
+    ) -> NodeId {
         let new_child_id = NodeId::from(self.nodes.len());
         self.nodes.push(NodeData {
             parent: Some(parent_id),
             next_sibling: None,
             children: None,
             kind,
+            static_hash,
         });
 
         let last_child_id = self.nodes[parent_id.get_usize()].children.map(|(_, id)| id);
@@ -83,6 +93,7 @@ fn parse<'input>(xml: &roxmltree::Document<'input>) -> Result<Document<'input>, 
         next_sibling: None,
         children: None,
         kind: NodeKind::Root,
+        static_hash: None,
     });
 
     let style_sheet = resolve_css(xml);
@@ -776,6 +787,7 @@ impl<'a> TryFrom<&'a NestedSvgDocument<'a>> for Document<'a> {
             next_sibling: None,
             children: None,
             kind: NodeKind::Root,
+            static_hash: None,
         });
 
         let parent_id = doc.root().id;
@@ -880,22 +892,24 @@ fn append_nested_element<'a>(
     };
 
     if tag_name == EId::Use {
-        let node_id = doc.append(
+        let node_id = doc.append_with_static_hash(
             parent_id,
             NodeKind::Element {
                 tag_name,
                 attributes,
             },
+            node.static_hash,
         );
 
         resolve_nested_use_element(doc, nested_doc, node_id, node, use_origin, attributes);
     } else {
-        let node_id = doc.append(
+        let node_id = doc.append_with_static_hash(
             parent_id,
             NodeKind::Element {
                 tag_name,
                 attributes,
             },
+            node.static_hash,
         );
 
         flatten_nested_svg_tree(doc, nested_doc, node_id, &node.children)

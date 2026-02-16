@@ -1119,6 +1119,9 @@ pub struct Group {
     pub(crate) layer_bounding_box: NonZeroRect,
     pub(crate) abs_layer_bounding_box: NonZeroRect,
     pub(crate) children: Vec<Node>,
+    /// Pre-computed hash for fully static groups (no runtime-varying content).
+    /// If Some, the static cache can use this directly instead of computing at runtime.
+    pub(crate) static_hash: Option<u64>,
 }
 
 impl std::hash::Hash for Group {
@@ -1164,6 +1167,7 @@ impl Group {
             layer_bounding_box: NonZeroRect::from_xywh(0.0, 0.0, 1.0, 1.0).unwrap(),
             abs_layer_bounding_box: NonZeroRect::from_xywh(0.0, 0.0, 1.0, 1.0).unwrap(),
             children: Vec::new(),
+            static_hash: None,
         }
     }
 
@@ -1285,6 +1289,14 @@ impl Group {
         &self.children
     }
 
+    /// Pre-computed hash for fully static groups.
+    ///
+    /// If Some, the group is fully static (no runtime-varying content) and
+    /// can be cached permanently. This hash was computed at compile-time.
+    pub fn static_hash(&self) -> Option<u64> {
+        self.static_hash
+    }
+
     /// Checks if this group should be isolated during rendering.
     pub fn should_isolate(&self) -> bool {
         self.isolate
@@ -1382,6 +1394,9 @@ pub struct Path {
     pub(crate) abs_bounding_box: Rect,
     pub(crate) stroke_bounding_box: Rect,
     pub(crate) abs_stroke_bounding_box: Rect,
+    /// Pre-computed static hash for cache optimization.
+    /// If Some, this path's content is known at compile-time and can be cached permanently.
+    pub(crate) static_hash: Option<u64>,
 }
 
 impl std::hash::Hash for Path {
@@ -1412,6 +1427,7 @@ impl Path {
             ShapeRendering::default(),
             data,
             Transform::default(),
+            None, // static_hash
         )
     }
 
@@ -1424,6 +1440,7 @@ impl Path {
         rendering_mode: ShapeRendering,
         data: Arc<tiny_skia_path::Path>,
         abs_transform: Transform,
+        static_hash: Option<u64>,
     ) -> Option<Self> {
         let bounding_box = data.compute_tight_bounds()?;
         let stroke_bounding_box =
@@ -1457,6 +1474,7 @@ impl Path {
             abs_bounding_box,
             stroke_bounding_box,
             abs_stroke_bounding_box,
+            static_hash,
         })
     }
 
@@ -1545,6 +1563,12 @@ impl Path {
     /// Will have the same value as `abs_bounding_box` when path has no stroke.
     pub fn abs_stroke_bounding_box(&self) -> Rect {
         self.abs_stroke_bounding_box
+    }
+
+    /// Returns the pre-computed static hash for this path, if any.
+    /// This is set at compile-time by svgr-macro for fully static paths.
+    pub fn static_hash(&self) -> Option<u64> {
+        self.static_hash
     }
 
     fn calculate_stroke_bbox(stroke: Option<&Stroke>, path: &tiny_skia_path::Path) -> Option<Rect> {

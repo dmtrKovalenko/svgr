@@ -667,6 +667,7 @@ pub(crate) fn convert_group(
         layer_bounding_box: NonZeroRect::from_xywh(0.0, 0.0, 1.0, 1.0).unwrap(),
         abs_layer_bounding_box: NonZeroRect::from_xywh(0.0, 0.0, 1.0, 1.0).unwrap(),
         children: Vec::new(),
+        static_hash: node.static_hash(),
     };
     collect_children(cache, &mut g);
 
@@ -866,6 +867,7 @@ fn convert_path(
         rendering_mode,
         tiny_skia_path,
         path_transform,
+        node.static_hash(),
     );
 
     let path = match path {

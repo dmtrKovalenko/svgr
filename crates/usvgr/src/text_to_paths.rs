@@ -70,6 +70,7 @@ pub(crate) fn convert(mut text: Text, fontdb: &fontdb::Database) -> Option<Text>
 
     let mut group = Group {
         id: text.id.clone(),
+        static_hash: text.static_hash,
         ..Group::empty()
     };
 
@@ -706,6 +707,7 @@ fn convert_span(
         ShapeRendering::default(),
         Arc::new(path),
         Transform::default(),
+        None, // static_hash - text paths are dynamic
     )?;
 
     Some((path, bbox))
@@ -789,6 +791,7 @@ fn convert_decoration(
         ShapeRendering::default(),
         Arc::new(path_data),
         Transform::default(),
+        None, // static_hash - text decorations are dynamic
     )
 }
 

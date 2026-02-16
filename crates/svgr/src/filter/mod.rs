@@ -321,7 +321,8 @@ impl Image {
         self.image.height()
     }
 
-    fn as_ref(&self) -> &tiny_skia::Pixmap { &self.image
+    fn as_ref(&self) -> &tiny_skia::Pixmap {
+        &self.image
     }
 }
 

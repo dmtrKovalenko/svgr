@@ -17,7 +17,6 @@ pub fn render(
         return;
     }
 
-    //cache.with_cache(ctx, pixmap, path, |pixmap, cache, ctx| {
     if path.paint_order() == usvgr::PaintOrder::FillAndStroke {
         fill_path(path, blend_mode, ctx, transform, pixmap, cache, pixmap_pool);
         stroke_path(path, blend_mode, ctx, transform, pixmap, cache, pixmap_pool);
@@ -25,7 +24,6 @@ pub fn render(
         stroke_path(path, blend_mode, ctx, transform, pixmap, cache, pixmap_pool);
         fill_path(path, blend_mode, ctx, transform, pixmap, cache, pixmap_pool);
     }
-    //})
 }
 
 pub fn fill_path(
@@ -128,7 +126,7 @@ fn stroke_path<'a>(
 fn convert_linear_gradient(
     gradient: &usvgr::LinearGradient,
     opacity: usvgr::Opacity,
-) -> Option<tiny_skia::Shader> {
+) -> Option<tiny_skia::Shader<'_>> {
     let (mode, points) = convert_base_gradient(gradient, opacity)?;
 
     let shader = tiny_skia::LinearGradient::new(
@@ -145,7 +143,7 @@ fn convert_linear_gradient(
 fn convert_radial_gradient(
     gradient: &usvgr::RadialGradient,
     opacity: usvgr::Opacity,
-) -> Option<tiny_skia::Shader> {
+) -> Option<tiny_skia::Shader<'_>> {
     let (mode, points) = convert_base_gradient(gradient, opacity)?;
 
     let shader = tiny_skia::RadialGradient::new(
