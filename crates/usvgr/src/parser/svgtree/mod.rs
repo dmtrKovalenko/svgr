@@ -89,13 +89,28 @@ impl NestedNodeData<'_> {
 
         // Hash all attribute values
         for attr in &self.attrs {
-            format!("{}", attr.value).hash(&mut hasher);
+            Self::hash_attr_value(&attr.value, &mut hasher);
         }
 
         // Hash children recursively
         Self::hash_children(&self.children, &mut hasher);
 
         hasher.finish()
+    }
+
+    fn hash_attr_value(value: &SvgAttributeValue<'_>, hasher: &mut impl std::hash::Hasher) {
+        use std::hash::Hash;
+        match value {
+            SvgAttributeValue::StringStorage(s) => s.as_str().hash(hasher),
+            // Hash the bit pattern of the float so equal floats hash equally
+            // without any string formatting allocation.
+            SvgAttributeValue::Float(f, _) => f.to_bits().hash(hasher),
+            SvgAttributeValue::Length(l) => format!("{:?}", l).hash(hasher),
+            SvgAttributeValue::Transform(t) => format!("{:?}", t).hash(hasher),
+            SvgAttributeValue::Color(c) => format!("{:?}", c).hash(hasher),
+            SvgAttributeValue::ImageData(img) => img.id.hash(hasher),
+            SvgAttributeValue::PathData(segs) => segs.hash(hasher),
+        }
     }
 
     fn hash_children(children: &[Option<NestedNodeData>], hasher: &mut impl std::hash::Hasher) {
@@ -109,7 +124,7 @@ impl NestedNodeData<'_> {
                 NestedNodeKind::Element { tag_name } => {
                     format!("{:?}", tag_name).hash(hasher);
                     for attr in &child.attrs {
-                        format!("{}", attr.value).hash(hasher);
+                        Self::hash_attr_value(&attr.value, hasher);
                     }
                     Self::hash_children(&child.children, hasher);
                 }
@@ -385,7 +400,7 @@ impl quote::ToTokens for NestedNodeKind<'_> {
 /// FFrames change: NestedNodeDataused to construct trees in macro
 pub struct NestedNodeData<'input> {
     pub kind: NestedNodeKind<'input>,
-    pub attrs: Vec<Attribute<'input>>,
+    pub attrs: Box<[Attribute<'input>]>,
     pub children: Vec<Option<NestedNodeData<'input>>>,
     /// Pre-computed hash for cache optimization.
     /// If Some, the cache can use this directly instead of computing at runtime.
@@ -436,19 +451,13 @@ macro_rules! impl_value_from_numeric {
     ($target:ty) => {
         impl From<$target> for SvgAttributeValue<'_> {
             fn from(v: $target) -> Self {
-                SvgAttributeValue::Float(
-                    v as f32,
-                    roxmltree::StringStorage::Owned(v.to_string().into()),
-                )
+                SvgAttributeValue::Float(v as f32, roxmltree::StringStorage::Borrowed(""))
             }
         }
 
         impl From<&$target> for SvgAttributeValue<'_> {
             fn from(v: &$target) -> Self {
-                SvgAttributeValue::Float(
-                    *v as f32,
-                    roxmltree::StringStorage::Owned(v.to_string().into()),
-                )
+                SvgAttributeValue::Float(*v as f32, roxmltree::StringStorage::Borrowed(""))
             }
         }
     };
@@ -511,7 +520,7 @@ impl std::fmt::Display for SvgAttributeValue<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         match self {
             SvgAttributeValue::StringStorage(s) => write!(f, "{}", s),
-            SvgAttributeValue::Float(_, s) => write!(f, "{}", s),
+            SvgAttributeValue::Float(v, _) => write!(f, "{}", v),
             SvgAttributeValue::Length(v) => write!(f, "{:?}", v),
             SvgAttributeValue::Transform(v) => write!(f, "{:?}", v),
             // TODO figure out if it it as in issue that we ignore the alpha here

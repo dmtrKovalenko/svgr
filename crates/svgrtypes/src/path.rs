@@ -1,3 +1,5 @@
+use std::hash::Hash;
+
 use crate::{tokens_helper::TokenizableNumber, Error, Stream};
 
 /// Representation of the path segment.
@@ -67,6 +69,92 @@ pub enum PathSegment {
     ClosePath {
         abs: bool,
     },
+}
+
+impl Hash for PathSegment {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let discriminant = std::mem::discriminant(self);
+        discriminant.hash(state);
+
+        match self {
+            PathSegment::MoveTo { abs, x, y } => {
+                abs.hash(state);
+                x.to_bits().hash(state);
+                y.to_bits().hash(state);
+            }
+            PathSegment::LineTo { abs, x, y } => {
+                abs.hash(state);
+                x.to_bits().hash(state);
+                y.to_bits().hash(state);
+            }
+            PathSegment::HorizontalLineTo { abs, x } => {
+                abs.hash(state);
+                x.to_bits().hash(state);
+            }
+            PathSegment::VerticalLineTo { abs, y } => {
+                abs.hash(state);
+                y.to_bits().hash(state);
+            }
+            PathSegment::CurveTo {
+                abs,
+                x1,
+                y1,
+                x2,
+                y2,
+                x,
+                y,
+            } => {
+                abs.hash(state);
+                x1.to_bits().hash(state);
+                y1.to_bits().hash(state);
+                x2.to_bits().hash(state);
+                y2.to_bits().hash(state);
+                x.to_bits().hash(state);
+                y.to_bits().hash(state);
+            }
+            PathSegment::SmoothCurveTo { abs, x2, y2, x, y } => {
+                abs.hash(state);
+                x2.to_bits().hash(state);
+                y2.to_bits().hash(state);
+                x.to_bits().hash(state);
+                y.to_bits().hash(state);
+            }
+            PathSegment::Quadratic { abs, x1, y1, x, y } => {
+                abs.hash(state);
+                x1.to_bits().hash(state);
+                y1.to_bits().hash(state);
+                x.to_bits().hash(state);
+                y.to_bits().hash(state);
+            }
+            PathSegment::SmoothQuadratic { abs, x, y } => {
+                abs.hash(state);
+                x.to_bits().hash(state);
+                y.to_bits().hash(state);
+            }
+            PathSegment::EllipticalArc {
+                abs,
+                rx,
+                ry,
+                x_axis_rotation,
+                large_arc,
+                sweep,
+                x,
+                y,
+            } => {
+                abs.hash(state);
+                rx.to_bits().hash(state);
+                ry.to_bits().hash(state);
+                x_axis_rotation.to_bits().hash(state);
+                large_arc.hash(state);
+                sweep.hash(state);
+                x.to_bits().hash(state);
+                y.to_bits().hash(state);
+            }
+            PathSegment::ClosePath { abs } => {
+                abs.hash(state);
+            }
+        }
+    }
 }
 
 impl quote::ToTokens for PathSegment {

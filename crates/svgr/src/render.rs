@@ -115,25 +115,15 @@ fn render_group(
         if cache.has_static_cache() {
             // Check if already cached
             if let Some(cached) = cache.get_static(static_hash) {
-                draw_cached_static_group(group, cached, transform, pixmap);
+                draw_cached_static_group(group, cached, ctx, transform, pixmap);
                 return Some(());
             }
-
-            // Calculate bounding box to determine if caching is worthwhile
-            let group_bbox = group.layer_bounding_box();
-            let ibbox = tiny_skia::IntRect::from_xywh(
-                group_bbox.x().floor() as i32 - 2,
-                group_bbox.y().floor() as i32 - 2,
-                group_bbox.width().ceil() as u32 + 4,
-                group_bbox.height().ceil() as u32 + 4,
-            )?;
 
             render_and_cache_static_group(
                 group,
                 static_hash,
                 ctx,
                 transform,
-                ibbox,
                 pixmap,
                 cache,
                 pixmap_pool,
@@ -159,19 +149,40 @@ fn render_and_cache_static_group(
     static_hash: u64,
     ctx: &Context,
     parent_transform: tiny_skia::Transform,
-    ibbox: tiny_skia::IntRect,
     pixmap: &mut tiny_skia::PixmapMut,
     cache: &mut crate::cache::SvgrCache,
     pixmap_pool: &crate::cache::PixmapPool,
 ) -> Option<()> {
-    // Allocate sub-pixmap for rendering
-    let mut sub_pixmap = pixmap_pool.take_or_allocate(ibbox.width(), ibbox.height())?;
+    // Render at canvas scale (final_transform) rather than parent-local space.
+    // The old approach rendered at parent-local scale then drew back with a
+    // draw_transform that included the viewbox scale (e.g. 0.333x), causing
+    // bilinear downscaling of the large sub-pixmap and making its rectangular
+    // boundary visible as a blurred box. Matching render_isolated_group's
+    // approach (render at canvas scale, draw back at integer position with
+    // identity transform) eliminates both artifacts.
+    let final_transform = parent_transform.pre_concat(group.transform());
+    let final_bbox = group.layer_bounding_box().transform(final_transform)?;
 
-    // Render transform: translate content to fit in pixmap starting at (0,0)
-    // and apply group's own transform
+    let final_ibbox = if group.filters().is_empty() {
+        tiny_skia::IntRect::from_xywh(
+            final_bbox.x().floor() as i32 - 2,
+            final_bbox.y().floor() as i32 - 2,
+            final_bbox.width().ceil() as u32 + 4,
+            final_bbox.height().ceil() as u32 + 4,
+        )?
+    } else {
+        final_bbox.to_int_rect()
+    };
+    let final_ibbox = crate::geom::fit_to_rect(final_ibbox, ctx.max_bbox)?;
+
+    // Allocate sub-pixmap sized to the canvas-space bounding box.
+    let mut sub_pixmap = pixmap_pool.take_or_allocate(final_ibbox.width(), final_ibbox.height())?;
+
+    // Shift so that final_ibbox.top-left maps to (0,0) in the sub-pixmap,
+    // then apply the full canvas-scale transform (parent + group).
     let render_transform =
-        tiny_skia::Transform::from_translate(-(ibbox.x() as f32), -(ibbox.y() as f32))
-            .pre_concat(group.transform());
+        tiny_skia::Transform::from_translate(-(final_ibbox.x() as f32), -(final_ibbox.y() as f32))
+            .pre_concat(final_transform);
 
     // Render children to sub-pixmap
     render_nodes(
@@ -200,7 +211,7 @@ fn render_and_cache_static_group(
 
     // Draw from cache
     if let Some(cached) = cache.get_static(static_hash) {
-        draw_cached_static_group(group, cached, parent_transform, pixmap);
+        draw_cached_static_group(group, cached, ctx, parent_transform, pixmap);
     }
 
     Some(())
@@ -210,20 +221,33 @@ fn render_and_cache_static_group(
 fn draw_cached_static_group(
     group: &usvgr::Group,
     cached: &tiny_skia::Pixmap,
+    ctx: &Context,
     parent_transform: tiny_skia::Transform,
     pixmap: &mut tiny_skia::PixmapMut,
 ) {
-    // For static groups, we rendered at identity with group transform applied,
-    // so we just need to apply the parent transform
-    let group_bbox = group.layer_bounding_box();
-    let ibbox = tiny_skia::IntRect::from_xywh(
-        group_bbox.x().floor() as i32 - 2,
-        group_bbox.y().floor() as i32 - 2,
-        group_bbox.width().ceil() as u32 + 4,
-        group_bbox.height().ceil() as u32 + 4,
-    );
+    // Recompute the canvas-space bounding box exactly as it was at render time
+    // so we know where to place the cached sub-pixmap.
+    let final_transform = parent_transform.pre_concat(group.transform());
+    let Some(final_bbox) = group.layer_bounding_box().transform(final_transform) else {
+        return;
+    };
 
-    let Some(ibbox) = ibbox else { return };
+    let final_ibbox = if group.filters().is_empty() {
+        tiny_skia::IntRect::from_xywh(
+            final_bbox.x().floor() as i32 - 2,
+            final_bbox.y().floor() as i32 - 2,
+            final_bbox.width().ceil() as u32 + 4,
+            final_bbox.height().ceil() as u32 + 4,
+        )
+    } else {
+        Some(final_bbox.to_int_rect())
+    };
+    let Some(final_ibbox) = final_ibbox else {
+        return;
+    };
+    let Some(final_ibbox) = crate::geom::fit_to_rect(final_ibbox, ctx.max_bbox) else {
+        return;
+    };
 
     let paint = tiny_skia::PixmapPaint {
         opacity: group.opacity().get(),
@@ -231,10 +255,17 @@ fn draw_cached_static_group(
         quality: tiny_skia::FilterQuality::Bilinear,
     };
 
-    // Apply parent transform and translate to bounding box position
-    let draw_transform = parent_transform.pre_translate(ibbox.x() as f32, ibbox.y() as f32);
-
-    pixmap.draw_pixmap(0, 0, cached.as_ref(), &paint, draw_transform, None);
+    // The sub-pixmap was rendered at canvas scale with final_ibbox.top-left at (0,0).
+    // Draw it back at the integer canvas position with identity transform — no downscaling,
+    // no bilinear filtering artifacts from the viewbox scale.
+    pixmap.draw_pixmap(
+        final_ibbox.x(),
+        final_ibbox.y(),
+        cached.as_ref(),
+        &paint,
+        tiny_skia::Transform::identity(),
+        None,
+    );
 }
 
 fn render_isolated_group(
