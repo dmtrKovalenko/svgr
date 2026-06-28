@@ -622,3 +622,34 @@ fn flattened_text_should_inherit_absolute_transform() {
         path.abs_bounding_box()
     );
 }
+
+#[test]
+fn use_node_abs_transform() {
+    let svg = "
+    <svg viewBox='0 0 200 200'
+         xmlns='http://www.w3.org/2000/svg'
+         xmlns:xlink='http://www.w3.org/1999/xlink'>
+        <defs>
+            <rect id='rect1' x='0' y='0' width='100' height='100'/>
+        </defs>
+        <use xlink:href='#rect1' transform='matrix(0.5, 0, 0, 0.5, 20, 30)' />
+    </svg>
+    ";
+
+    let fontdb = usvgr::fontdb::Database::new();
+    let tree = usvgr::Tree::from_str(&svg, &usvgr::Options::default(), &fontdb).unwrap();
+
+    let usvgr::Node::Group(group_node) = &tree.root().children()[0] else {
+        unreachable!()
+    };
+    assert_eq!(group_node.abs_transform().get_scale(), (0.5, 0.5));
+
+    let usvgr::Node::Path(path_node) = &group_node.children()[0] else {
+        unreachable!()
+    };
+    assert_eq!(path_node.abs_transform().get_scale(), (0.5, 0.5));
+    assert_eq!(
+        path_node.abs_bounding_box(),
+        usvgr::Rect::from_xywh(20.0, 30.0, 50.0, 50.0).unwrap()
+    );
+}
