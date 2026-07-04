@@ -57,6 +57,7 @@ mod parser;
 #[cfg(feature = "text")]
 mod text;
 mod tree;
+#[cfg(feature = "writer")]
 mod writer;
 
 pub use parser::*;
@@ -71,5 +72,7 @@ pub use fontdb;
 
 pub use ahash;
 pub use lru;
+#[cfg(feature = "writer")]
 pub use writer::WriteOptions;
+#[cfg(feature = "writer")]
 pub use xmlwriter::Indent;

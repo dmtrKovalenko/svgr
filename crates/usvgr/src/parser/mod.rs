@@ -23,6 +23,7 @@ mod text;
 
 pub use image::PreloadedImageData;
 pub use options::Options;
+#[cfg(feature = "writer")]
 pub(crate) use svgtree::{AId, EId};
 
 pub use self::converter::Cache;
@@ -32,6 +33,9 @@ pub use self::converter::Cache;
 pub enum Error {
     /// Only UTF-8 content are supported.
     NotAnUtf8Str,
+
+    /// `svgz` feature is required to parse SVGZ data.
+    SvgzFeatureNotEnabled,
 
     /// Compressed SVG must use the GZip algorithm.
     MalformedGZip,
@@ -61,6 +65,9 @@ impl std::fmt::Display for Error {
         match *self {
             Error::NotAnUtf8Str => {
                 write!(f, "provided data has not an UTF-8 encoding")
+            }
+            Self::SvgzFeatureNotEnabled => {
+                write!(f, "enable svgz cargo feature to decode SVGZ data")
             }
             Error::MalformedGZip => {
                 write!(f, "provided data has a malformed GZip content")
@@ -104,14 +111,20 @@ impl crate::Tree {
         #[cfg(feature = "text")] fontdb: &fontdb::Database,
     ) -> Result<Self, Error> {
         if data.starts_with(&[0x1f, 0x8b]) {
-            let data = decompress_svgz(data)?;
-            let text = std::str::from_utf8(&data).map_err(|_| Error::NotAnUtf8Str)?;
-            Self::from_str(
-                text,
-                opt,
-                #[cfg(feature = "text")]
-                fontdb,
-            )
+            #[cfg(feature = "svgz")]
+            {
+                let data = decompress_svgz(data)?;
+                let text = std::str::from_utf8(&data).map_err(|_| Error::NotAnUtf8Str)?;
+                Self::from_str(
+                    text,
+                    opt,
+                    #[cfg(feature = "text")]
+                    fontdb,
+                )
+            }
+
+            #[cfg(not(feature = "svgz"))]
+            Err(Error::SvgzFeatureNotEnabled)
         } else {
             let text = std::str::from_utf8(data).map_err(|_| Error::NotAnUtf8Str)?;
             Self::from_str(
@@ -231,6 +244,7 @@ impl crate::Tree {
 }
 
 /// Decompresses an SVGZ file.
+#[cfg(feature = "svgz")]
 pub fn decompress_svgz(data: &[u8]) -> Result<Vec<u8>, Error> {
     use std::io::Read;
 

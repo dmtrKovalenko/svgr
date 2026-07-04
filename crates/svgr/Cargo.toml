@@ -39,7 +39,9 @@ name = "repeating_svg_benchmark"
 harness = false
 
 [features]
-default = ["text", "system-fonts", "memmap-fonts", "raster-images"]
+default = ["svgz", "text", "system-fonts", "memmap-fonts", "raster-images"]
+# Enables SVGZ decoding
+svgz = ["usvgr/svgz"]
 # Enables SVG Text support.
 # Adds around 400KiB to your binary.
 text = ["usvgr/text"]

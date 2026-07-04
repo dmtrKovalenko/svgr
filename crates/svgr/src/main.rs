@@ -62,9 +62,15 @@ fn process() -> Result<(), String> {
     })?;
 
     if svg_data.starts_with(&[0x1f, 0x8b]) {
-        svg_data = timed(args.perf, "SVGZ Decoding", || {
-            usvgr::decompress_svgz(&svg_data).map_err(|e| e.to_string())
-        })?;
+        #[cfg(feature = "svgz")]
+        {
+            svg_data = timed(args.perf, "SVGZ Decoding", || {
+                usvgr::decompress_svgz(&svg_data).map_err(|e| e.to_string())
+            })?;
+        }
+
+        #[cfg(not(feature = "svgz"))]
+        return Err(usvgr::Error::SvgzFeatureNotEnabled.to_string());
     };
 
     let svg_string = std::str::from_utf8(&svg_data)
