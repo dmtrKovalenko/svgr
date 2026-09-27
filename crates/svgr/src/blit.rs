@@ -67,9 +67,28 @@ fn div255(v: u32) -> u32 {
     (v + (v >> 8)) >> 8
 }
 
+/// `u8 as f32 * (1.0 / 255.0)` like tiny-skia loads a channel.
+static UNIT: [f32; 256] = {
+    let mut table = [0.0; 256];
+    let mut i = 0;
+    while i < 256 {
+        table[i] = i as f32 * (1.0 / 255.0);
+        i += 1;
+    }
+    table
+};
+
+/// Stores a channel like tiny-skia: clamped to 0..1, scaled and rounded half to even.
+#[inline(always)]
+fn unit_to_u8(value: f32) -> u8 {
+    (value.clamp(0.0, 1.0) * 255.0).round_ties_even() as u8
+}
+
+/// Source-over with exactly the arithmetic of tiny-skia's floating point pipeline, so the
+/// result is identical to `draw_pixmap`, just without its per-pixel stage machinery.
 fn source_over(dst: &mut PixmapMut, x: i32, y: i32, src: PixmapRef, opacity: f32) {
-    let opacity = (opacity.clamp(0.0, 1.0) * 255.0 + 0.5) as u32;
-    if opacity == 0 {
+    let opacity = opacity.clamp(0.0, 1.0);
+    if opacity == 0.0 {
         return;
     }
 
@@ -94,29 +113,31 @@ fn source_over(dst: &mut PixmapMut, x: i32, y: i32, src: PixmapRef, opacity: f32
         let dst_row = &mut dst_data[dst_start..dst_start + row_len];
 
         for (s, d) in src_row.chunks_exact(4).zip(dst_row.chunks_exact_mut(4)) {
-            let (mut r, mut g, mut b, mut a) = (s[0] as u32, s[1] as u32, s[2] as u32, s[3] as u32);
-            if opacity != 255 {
-                r = div255(r * opacity);
-                g = div255(g * opacity);
-                b = div255(b * opacity);
-                a = div255(a * opacity);
+            // a transparent source leaves the destination as is, an opaque one replaces it
+            // (both exact in the floating point pipeline, see the tests)
+            if s[3] == 0 {
+                continue;
+            }
+            if s[3] == 255 && opacity == 1.0 {
+                d.copy_from_slice(s);
+                continue;
             }
 
-            match a {
-                0 => {}
-                255 => {
-                    d[0] = r as u8;
-                    d[1] = g as u8;
-                    d[2] = b as u8;
-                    d[3] = 255;
+            let mut source = [
+                UNIT[s[0] as usize],
+                UNIT[s[1] as usize],
+                UNIT[s[2] as usize],
+                UNIT[s[3] as usize],
+            ];
+            if opacity != 1.0 {
+                for channel in &mut source {
+                    *channel *= opacity;
                 }
-                _ => {
-                    let inv = 255 - a;
-                    d[0] = (r + div255(d[0] as u32 * inv)) as u8;
-                    d[1] = (g + div255(d[1] as u32 * inv)) as u8;
-                    d[2] = (b + div255(d[2] as u32 * inv)) as u8;
-                    d[3] = (a + div255(d[3] as u32 * inv)) as u8;
-                }
+            }
+
+            let inv_alpha = 1.0 - source[3];
+            for channel in 0..4 {
+                d[channel] = unit_to_u8(UNIT[d[channel] as usize] * inv_alpha + source[channel]);
             }
         }
     }
@@ -215,6 +236,14 @@ pub(crate) fn source_over_translated(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn load_store_round_trips() {
+        for value in 0..=255u8 {
+            assert_eq!(unit_to_u8(UNIT[value as usize]), value);
+            assert_eq!(unit_to_u8(UNIT[value as usize] * 1.0 + 0.0), value);
+        }
+    }
     use tiny_skia::Pixmap;
 
     fn random_premultiplied(width: u32, height: u32, seed: &mut u32) -> Pixmap {
@@ -237,7 +266,7 @@ mod tests {
     }
 
     #[test]
-    fn matches_tiny_skia_within_rounding() {
+    fn matches_tiny_skia_exactly() {
         let mut seed = 0xDEAD_BEEF;
         for (x, y, opacity) in [
             (0, 0, 1.0),
@@ -262,7 +291,7 @@ mod tests {
             for (index, (e, a)) in expected.data().iter().zip(actual.data()).enumerate() {
                 let pixel = index / 4;
                 assert!(
-                    e.abs_diff(*a) <= 1,
+                    e == a,
                     "{e} vs {a} at offset ({x}, {y}) opacity {opacity}, pixel ({}, {}) channel {}, dst {:?}",
                     pixel % 48,
                     pixel / 48,

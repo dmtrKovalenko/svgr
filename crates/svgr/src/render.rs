@@ -297,7 +297,7 @@ fn render_isolated_group(
         tiny_skia::Transform::from_translate(-(final_ibbox.x() as f32), -(final_ibbox.y() as f32))
             .pre_concat(final_transform);
 
-    if !group.filters().is_empty() && final_ibbox == unclipped_ibbox {
+    if !group.filters().is_empty() && final_ibbox == unclipped_ibbox && cache.layers.is_some() {
         if let Some(key) = layer_cache_key(group, final_transform) {
             return render_layer_cached(
                 group,
