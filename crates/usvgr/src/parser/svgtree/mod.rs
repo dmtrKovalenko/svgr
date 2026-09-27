@@ -110,6 +110,7 @@ impl NestedNodeData<'_> {
             SvgAttributeValue::Color(c) => format!("{:?}", c).hash(hasher),
             SvgAttributeValue::ImageData(img) => img.id.hash(hasher),
             SvgAttributeValue::PathData(segs) => segs.hash(hasher),
+            SvgAttributeValue::StaticPath(path) => path.segments().hash(hasher),
         }
     }
 
@@ -408,6 +409,48 @@ pub struct NestedNodeData<'input> {
     pub static_hash: Option<u64>,
 }
 
+/// Path geometry (`d` or `points`) known at compile time.
+///
+/// The `svgr!` macro places it in a `static`, so the geometry is converted into a
+/// `tiny_skia_path::Path` once per process instead of once per rendered frame.
+pub struct StaticPathData {
+    segments: &'static [svgrtypes::PathSegment],
+    path: std::sync::OnceLock<Option<Arc<tiny_skia_path::Path>>>,
+}
+
+impl StaticPathData {
+    /// `segments` must already describe the final geometry, e.g. `polygon` points end
+    /// with a `ClosePath`.
+    pub const fn new(segments: &'static [svgrtypes::PathSegment]) -> Self {
+        Self {
+            segments,
+            path: std::sync::OnceLock::new(),
+        }
+    }
+
+    pub fn segments(&self) -> &'static [svgrtypes::PathSegment] {
+        self.segments
+    }
+
+    pub(crate) fn path(&self) -> Option<Arc<tiny_skia_path::Path>> {
+        self.path
+            .get_or_init(|| super::shapes::convert_path_from_segments(self.segments))
+            .clone()
+    }
+}
+
+impl PartialEq for StaticPathData {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(self, other) || self.segments == other.segments
+    }
+}
+
+impl std::fmt::Debug for StaticPathData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "StaticPathData({} segments)", self.segments.len())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum SvgAttributeValue<'a> {
     Float(f32, StringStorage<'a>),
@@ -419,6 +462,8 @@ pub enum SvgAttributeValue<'a> {
     /// Pre-parsed SVG path data for compile-time optimization.
     /// Uses Cow to allow both static slices (compile-time) and owned Vecs (runtime).
     PathData(Cow<'a, [svgrtypes::PathSegment]>),
+    /// Compile-time path geometry, see [`StaticPathData`].
+    StaticPath(&'static StaticPathData),
 }
 
 impl From<String> for SvgAttributeValue<'_> {
@@ -512,6 +557,7 @@ impl<'a> SvgAttributeValue<'a> {
             SvgAttributeValue::PathData(segments) => {
                 SvgAttributeValueRef::PathData(segments.as_ref())
             }
+            SvgAttributeValue::StaticPath(path) => SvgAttributeValueRef::StaticPath(path),
         }
     }
 }
@@ -530,6 +576,9 @@ impl std::fmt::Display for SvgAttributeValue<'_> {
             SvgAttributeValue::ImageData(ref image) => write!(f, "{:?}", image.id),
             SvgAttributeValue::PathData(segments) => {
                 write!(f, "<path data with {} segments>", segments.len())
+            }
+            SvgAttributeValue::StaticPath(path) => {
+                write!(f, "<path data with {} segments>", path.segments().len())
             }
         }
     }
@@ -1004,7 +1053,8 @@ impl EId {
 }
 
 impl AId {
-    fn is_presentation(&self) -> bool {
+    /// Presentation attributes can also be set through the `style` attribute.
+    pub fn is_presentation(&self) -> bool {
         matches!(
             self,
             AId::AlignmentBaseline
@@ -1173,6 +1223,8 @@ pub enum SvgAttributeValueRef<'a> {
     ImageData(&'a Arc<PreloadedImageData>),
     /// Pre-parsed SVG path data
     PathData(&'a [svgrtypes::PathSegment]),
+    /// Compile-time path geometry
+    StaticPath(&'static StaticPathData),
 }
 
 impl<'a> SvgAttributeValueRef<'a> {

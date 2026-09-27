@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use crate::tree::FastTransform;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::{BuildHasher, Hash, Hasher};
@@ -84,11 +85,11 @@ pub(crate) fn convert(mut text: Text, fontdb: &fontdb::Database) -> Option<Text>
     text.flattened = Box::new(group);
 
     text.bounding_box = bbox.to_rect();
-    text.abs_bounding_box = bbox.transform(text.abs_transform)?.to_rect();
+    text.abs_bounding_box = bbox.fast_transform(text.abs_transform)?.to_rect();
     // TODO: test
     // TODO: should we stroke transformed paths?
     text.stroke_bounding_box = stroke_bbox.to_rect();
-    text.abs_stroke_bounding_box = stroke_bbox.transform(text.abs_transform)?.to_rect();
+    text.abs_stroke_bounding_box = stroke_bbox.fast_transform(text.abs_transform)?.to_rect();
 
     Some(text)
 }

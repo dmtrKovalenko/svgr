@@ -30,6 +30,7 @@ pub(crate) fn convert_path(node: SvgNode) -> Option<Arc<Path>> {
     match attr_value {
         // Fast path: use pre-parsed path data from compile-time
         SvgAttributeValueRef::PathData(segments) => convert_path_from_segments(segments),
+        SvgAttributeValueRef::StaticPath(path) => path.path(),
         // Slow path: parse path data at runtime
         SvgAttributeValueRef::Str(value) => convert_path_from_string(value),
         _ => None,
@@ -37,7 +38,7 @@ pub(crate) fn convert_path(node: SvgNode) -> Option<Arc<Path>> {
 }
 
 /// Convert pre-parsed path segments to a Path
-fn convert_path_from_segments(segments: &[svgrtypes::PathSegment]) -> Option<Arc<Path>> {
+pub(crate) fn convert_path_from_segments(segments: &[svgrtypes::PathSegment]) -> Option<Arc<Path>> {
     use svgrtypes::PathSegment;
 
     let mut builder = tiny_skia_path::PathBuilder::new();
@@ -389,11 +390,20 @@ fn convert_line(node: SvgNode, state: &converter::State) -> Option<Arc<Path>> {
 }
 
 fn convert_polyline(node: SvgNode) -> Option<Arc<Path>> {
+    if let Some(SvgAttributeValueRef::StaticPath(path)) = node.attribute_value(AId::Points) {
+        return path.path();
+    }
+
     let builder = points_to_path(node, "Polyline")?;
     builder.finish().map(Arc::new)
 }
 
 fn convert_polygon(node: SvgNode) -> Option<Arc<Path>> {
+    // compile-time points already end with a `ClosePath`
+    if let Some(SvgAttributeValueRef::StaticPath(path)) = node.attribute_value(AId::Points) {
+        return path.path();
+    }
+
     let mut builder = points_to_path(node, "Polygon")?;
     builder.close();
     builder.finish().map(Arc::new)
