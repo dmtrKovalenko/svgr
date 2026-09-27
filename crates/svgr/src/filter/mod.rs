@@ -110,15 +110,44 @@ impl PixmapExt for tiny_skia::Pixmap {
     }
 
     fn into_srgb(&mut self) {
-        demultiply_alpha(self.data_mut().as_rgba_mut());
-        from_linear_rgb(self.data_mut().as_rgba_mut());
-        multiply_alpha(self.data_mut().as_rgba_mut());
+        convert_premultiplied(self.data_mut().as_rgba_mut(), LINEAR_RGB_TO_SRGB_TABLE);
     }
 
     fn into_linear_rgb(&mut self) {
-        demultiply_alpha(self.data_mut().as_rgba_mut());
-        into_linear_rgb(self.data_mut().as_rgba_mut());
-        multiply_alpha(self.data_mut().as_rgba_mut());
+        convert_premultiplied(self.data_mut().as_rgba_mut(), SRGB_TO_LINEAR_RGB_TABLE);
+    }
+}
+
+/// Demultiplies, maps every color channel through `table` and multiplies again in a single
+/// pass. Same results as running `demultiply_alpha`, the table and `multiply_alpha` one
+/// after another.
+fn convert_premultiplied(data: &mut [RGBA8], table: &[u8; 256]) {
+    for p in data {
+        match p.a {
+            // demultiplying by zero yields 0 (or 255 for invalid input), multiplying back
+            // by zero makes every channel 0
+            0 => {
+                p.r = 0;
+                p.g = 0;
+                p.b = 0;
+            }
+            // demultiplying and multiplying by 1.0 keeps the value
+            255 => {
+                p.r = table[p.r as usize];
+                p.g = table[p.g as usize];
+                p.b = table[p.b as usize];
+            }
+            alpha => {
+                let a = alpha as f32 / 255.0;
+                let convert = |c: u8| {
+                    let demultiplied = (c as f32 / a + 0.5) as u8;
+                    (table[demultiplied as usize] as f32 * a + 0.5) as u8
+                };
+                p.r = convert(p.r);
+                p.g = convert(p.g);
+                p.b = convert(p.b);
+            }
+        }
     }
 }
 
@@ -213,6 +242,7 @@ const LINEAR_RGB_TO_SRGB_TABLE: &[u8; 256] = &[
 /// Provided pixels should have an **unpremultiplied alpha**.
 ///
 /// RGB channels order of the input image doesn't matter, but alpha channel must be the last one.
+#[cfg_attr(not(test), allow(dead_code))]
 fn into_linear_rgb(data: &mut [RGBA8]) {
     for p in data {
         p.r = SRGB_TO_LINEAR_RGB_TABLE[p.r as usize];
@@ -226,6 +256,7 @@ fn into_linear_rgb(data: &mut [RGBA8]) {
 /// Provided pixels should have an **unpremultiplied alpha**.
 ///
 /// RGB channels order of the input image doesn't matter, but alpha channel must be the last one.
+#[cfg_attr(not(test), allow(dead_code))]
 fn from_linear_rgb(data: &mut [RGBA8]) {
     for p in data {
         p.r = LINEAR_RGB_TO_SRGB_TABLE[p.r as usize];
@@ -1234,4 +1265,42 @@ fn resolve_std_dev(std_dx: f32, std_dy: f32, ts: usvgr::Transform) -> Option<(f6
 fn scale_coordinates(x: f32, y: f32, ts: usvgr::Transform) -> Option<(f32, f32)> {
     let (sx, sy) = ts.get_scale();
     Some((x * sx, y * sy))
+}
+
+#[cfg(test)]
+mod color_space_tests {
+    use super::*;
+
+    #[test]
+    fn fused_conversion_matches_separate_passes() {
+        let mut pixels = Vec::new();
+        for a in 0..=255u8 {
+            for c in (0..=a).step_by(3) {
+                pixels.push(RGBA8::new(c, a - c / 2, c / 3, a));
+            }
+        }
+        // invalid premultiplied values must behave the same too
+        pixels.push(RGBA8::new(200, 10, 0, 0));
+        pixels.push(RGBA8::new(255, 255, 255, 3));
+
+        for (fused_table, separate) in [
+            (
+                SRGB_TO_LINEAR_RGB_TABLE,
+                into_linear_rgb as fn(&mut [RGBA8]),
+            ),
+            (
+                LINEAR_RGB_TO_SRGB_TABLE,
+                from_linear_rgb as fn(&mut [RGBA8]),
+            ),
+        ] {
+            let mut expected = pixels.clone();
+            demultiply_alpha(&mut expected);
+            separate(&mut expected);
+            multiply_alpha(&mut expected);
+
+            let mut actual = pixels.clone();
+            convert_premultiplied(&mut actual, fused_table);
+            assert_eq!(expected, actual);
+        }
+    }
 }

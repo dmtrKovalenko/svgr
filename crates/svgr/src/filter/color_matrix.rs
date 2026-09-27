@@ -41,6 +41,9 @@ pub fn apply(matrix: &ColorMatrix, src: ImageRefMut) {
             ];
 
             for pixel in src.data {
+                if pixel.r == 0 && pixel.g == 0 && pixel.b == 0 {
+                    continue;
+                }
                 let (r, g, b, _) = to_normalized_components(*pixel);
 
                 let new_r = r * m[0] + g * m[1] + b * m[2];
@@ -69,6 +72,9 @@ pub fn apply(matrix: &ColorMatrix, src: ImageRefMut) {
             ];
 
             for pixel in src.data {
+                if pixel.r == 0 && pixel.g == 0 && pixel.b == 0 {
+                    continue;
+                }
                 let (r, g, b, _) = to_normalized_components(*pixel);
 
                 let new_r = r * m[0] + g * m[1] + b * m[2];
@@ -95,17 +101,41 @@ pub fn apply(matrix: &ColorMatrix, src: ImageRefMut) {
     }
 }
 
+/// `i as f32 / 255.0` for every channel value, a lookup is much cheaper than a division.
+static NORMALIZED: [f32; 256] = {
+    let mut table = [0.0; 256];
+    let mut i = 0;
+    while i < 256 {
+        table[i] = i as f32 / 255.0;
+        i += 1;
+    }
+    table
+};
+
 #[inline]
 fn to_normalized_components(pixel: RGBA8) -> (f32, f32, f32, f32) {
     (
-        pixel.r as f32 / 255.0,
-        pixel.g as f32 / 255.0,
-        pixel.b as f32 / 255.0,
-        pixel.a as f32 / 255.0,
+        NORMALIZED[pixel.r as usize],
+        NORMALIZED[pixel.g as usize],
+        NORMALIZED[pixel.b as usize],
+        NORMALIZED[pixel.a as usize],
     )
 }
 
 #[inline]
 fn from_normalized(c: f32) -> u8 {
     (f32_bound(0.0, c, 1.0) * 255.0) as u8
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn lookup_matches_division() {
+        for i in 0..=255u8 {
+            assert_eq!(
+                super::NORMALIZED[i as usize].to_bits(),
+                (i as f32 / 255.0).to_bits()
+            );
+        }
+    }
 }
