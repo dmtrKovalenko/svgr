@@ -54,7 +54,7 @@ pub fn render_inner(
             );
         }
         usvgr::ImageKind::DATA(ref data) => {
-            draw_raster(data, view_box, rendering_mode, transform, pixmap);
+            draw_raster(data, view_box, rendering_mode, transform, pixmap, cache);
         }
     }
 }
@@ -133,6 +133,7 @@ pub fn draw_raster(
     rendering_mode: usvgr::ImageRendering,
     transform: tiny_skia::Transform,
     pixmap: &mut tiny_skia::PixmapMut,
+    cache: &mut SvgrCache,
 ) -> Option<()> {
     let img_bytes = img.data.clone();
     let raster = tiny_skia::PixmapRef::from_bytes(&img_bytes, img.width, img.height)?;
@@ -158,6 +159,16 @@ pub fn draw_raster(
     let mut paint = tiny_skia::Paint::default();
     paint.shader = pattern;
 
+    if let Some(images) = cache.images.as_mut() {
+        if draw_resampled(
+            img, &view_box, rect, ts, quality, &paint, transform, pixmap, images,
+        )
+        .is_some()
+        {
+            return Some(());
+        }
+    }
+
     let mask = if view_box.aspect.slice {
         pixmap.create_rect_mask(transform, view_box.rect.to_rect())
     } else {
@@ -165,6 +176,95 @@ pub fn draw_raster(
     };
 
     pixmap.fill_rect(rect.to_rect(), &paint, transform, mask.as_ref());
+
+    Some(())
+}
+
+/// Draws an image that is drawn at the same size and sub-pixel position as before from
+/// its resampled copy. Returns `None` when the image has to be drawn directly: its
+/// transform rotates or skews it, it is not on the canvas or it was not drawn like this
+/// recently.
+#[allow(clippy::too_many_arguments)]
+fn draw_resampled(
+    img: &Arc<usvgr::PreloadedImageData>,
+    view_box: &usvgr::ViewBox,
+    rect: tiny_skia::NonZeroRect,
+    ts: tiny_skia::Transform,
+    quality: tiny_skia::FilterQuality,
+    paint: &tiny_skia::Paint,
+    transform: tiny_skia::Transform,
+    pixmap: &mut tiny_skia::PixmapMut,
+    images: &mut crate::cache::ImageResampleCache,
+) -> Option<()> {
+    use std::hash::{Hash, Hasher};
+
+    if transform.kx != 0.0 || transform.ky != 0.0 || transform.sx <= 0.0 || transform.sy <= 0.0 {
+        return None;
+    }
+
+    let clip = view_box.aspect.slice.then(|| view_box.rect.to_rect());
+    let mut bounds = rect.to_rect().transform(transform)?;
+    if let Some(clip) = clip {
+        bounds = bounds.intersect(&clip.transform(transform)?)?;
+    }
+
+    // Only the part on the canvas is resampled.
+    let left = bounds.left().floor().max(0.0);
+    let top = bounds.top().floor().max(0.0);
+    let right = bounds.right().ceil().min(pixmap.width() as f32);
+    let bottom = bounds.bottom().ceil().min(pixmap.height() as f32);
+    if left >= right || top >= bottom {
+        return None;
+    }
+    let width = (right - left) as u32;
+    let height = (bottom - top) as u32;
+
+    // The resampled pixels only depend on where the image lands relative to a whole pixel.
+    let local = tiny_skia::Transform::from_translate(-left, -top).pre_concat(transform);
+
+    let mut hasher = usvgr::ahash::AHasher::default();
+    img.id.hash(&mut hasher);
+    (
+        Arc::as_ptr(img) as usize,
+        img.data.len(),
+        img.width,
+        img.height,
+    )
+        .hash(&mut hasher);
+    (width, height, quality as u8, view_box.aspect.slice).hash(&mut hasher);
+    for value in [
+        local.sx, local.sy, local.tx, local.ty, ts.sx, ts.sy, ts.tx, ts.ty,
+    ] {
+        value.to_bits().hash(&mut hasher);
+    }
+    if let Some(clip) = clip {
+        for value in [clip.x(), clip.y(), clip.width(), clip.height()] {
+            value.to_bits().hash(&mut hasher);
+        }
+    }
+    let key = hasher.finish();
+
+    if images.get(key).is_none() {
+        if !images.seen_before(key) {
+            return None;
+        }
+
+        let mut resampled = tiny_skia::Pixmap::new(width, height)?;
+        let mut resampled_mut = resampled.as_mut();
+        let mask = clip.and_then(|clip| resampled_mut.create_rect_mask(local, clip));
+        resampled_mut.fill_rect(rect.to_rect(), paint, local, mask.as_ref());
+        images.insert(key, resampled);
+    }
+    let resampled = images.get(key)?;
+
+    pixmap.fast_draw_pixmap(
+        left as i32,
+        top as i32,
+        resampled.as_ref(),
+        &tiny_skia::PixmapPaint::default(),
+        tiny_skia::Transform::identity(),
+        None,
+    );
 
     Some(())
 }

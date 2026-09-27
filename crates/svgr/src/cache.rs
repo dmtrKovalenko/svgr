@@ -257,6 +257,52 @@ pub struct SvgrCache<RandomState: BuildHasher = ahash::RandomState> {
     lru_cache: Option<LruCacheInternal<RandomState>>,
     /// Persistent cache for static elements (compile-time known content)
     static_cache: Option<StaticCache>,
+    /// Raster images already resampled to the size they are drawn at
+    pub(crate) images: Option<ImageResampleCache>,
+}
+
+/// Raster images resampled to their on-canvas size and sub-pixel position. Resampling
+/// (bicubic in floating point) is by far the most expensive part of drawing an image, and
+/// most images are drawn at the same size frame after frame, only their whole pixel
+/// position may change.
+#[derive(Debug)]
+pub(crate) struct ImageResampleCache {
+    entries: LruCache<u64, Pixmap>,
+    /// Keys drawn recently. An image is only resampled into the cache when it shows up
+    /// again, so images drawn once (every video frame) never pay for caching.
+    seen: VecDeque<u64>,
+}
+
+impl Default for ImageResampleCache {
+    fn default() -> Self {
+        Self {
+            entries: LruCache::new(std::num::NonZeroUsize::new(8).unwrap()),
+            seen: VecDeque::with_capacity(16),
+        }
+    }
+}
+
+impl ImageResampleCache {
+    pub(crate) fn get(&mut self, key: u64) -> Option<&Pixmap> {
+        self.entries.get(&key)
+    }
+
+    /// Returns true when `key` was seen recently, remembers it otherwise.
+    pub(crate) fn seen_before(&mut self, key: u64) -> bool {
+        if self.seen.contains(&key) {
+            return true;
+        }
+        if self.seen.len() == self.seen.capacity() {
+            self.seen.pop_front();
+        }
+        self.seen.push_back(key);
+        false
+    }
+
+    pub(crate) fn insert(&mut self, key: u64, pixmap: Pixmap) -> &Pixmap {
+        self.entries.put(key, pixmap);
+        self.entries.peek(&key).unwrap()
+    }
 }
 
 impl SvgrCache {
@@ -277,6 +323,7 @@ impl SvgrCache {
         Self {
             lru_cache: None,
             static_cache: Some(StaticCache::new()),
+            images: Some(ImageResampleCache::default()),
         }
     }
 
@@ -308,6 +355,7 @@ impl SvgrCache {
                 config.max_bytes,
                 config.initial_capacity,
             )),
+            images: Some(ImageResampleCache::default()),
         }
     }
 }
@@ -431,6 +479,7 @@ impl<THashBuilder: BuildHasher + Default> SvgrCache<THashBuilder> {
         Self {
             lru_cache: None,
             static_cache: None,
+            images: None,
         }
     }
 
@@ -449,6 +498,7 @@ impl<THashBuilder: BuildHasher + Default> SvgrCache<THashBuilder> {
         Self {
             lru_cache,
             static_cache: Some(StaticCache::new()),
+            images: Some(ImageResampleCache::default()),
         }
     }
 
@@ -462,6 +512,7 @@ impl<THashBuilder: BuildHasher + Default> SvgrCache<THashBuilder> {
                     hash_builder: THashBuilder::default(),
                 }),
                 static_cache: None,
+                images: Some(ImageResampleCache::default()),
             }
         } else {
             Self::none()
@@ -483,6 +534,7 @@ impl<THashBuilder: BuildHasher + Default> SvgrCache<THashBuilder> {
         Self {
             lru_cache,
             static_cache: Some(StaticCache::unlimited()),
+            images: Some(ImageResampleCache::default()),
         }
     }
 
