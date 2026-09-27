@@ -1457,8 +1457,8 @@ impl Path {
                 Path::calculate_stroke_bbox(stroke.as_ref(), &path2).unwrap_or(abs_bounding_box);
         } else {
             // A transform without a skew can be performed just on a bbox.
-            abs_bounding_box = bounding_box.transform(abs_transform)?;
-            abs_stroke_bounding_box = stroke_bounding_box.transform(abs_transform)?;
+            abs_bounding_box = bounding_box.fast_transform(abs_transform)?;
+            abs_stroke_bounding_box = stroke_bounding_box.fast_transform(abs_transform)?;
         }
 
         Some(Path {
@@ -1965,7 +1965,7 @@ impl Group {
         for child in &self.children {
             let mut c_bbox = child.bounding_box();
             if let Node::Group(ref group) = child {
-                if let Some(r) = c_bbox.transform(group.transform) {
+                if let Some(r) = c_bbox.fast_transform(group.transform) {
                     c_bbox = r;
                 }
             }
@@ -1986,7 +1986,7 @@ impl Group {
             {
                 let mut c_bbox = child.bounding_box();
                 if let Node::Group(ref group) = child {
-                    if let Some(r) = c_bbox.transform(group.transform) {
+                    if let Some(r) = c_bbox.fast_transform(group.transform) {
                         c_bbox = r;
                     }
                 }
@@ -1999,7 +1999,7 @@ impl Group {
             {
                 let mut c_bbox = child.stroke_bounding_box();
                 if let Node::Group(ref group) = child {
-                    if let Some(r) = c_bbox.transform(group.transform) {
+                    if let Some(r) = c_bbox.fast_transform(group.transform) {
                         c_bbox = r;
                     }
                 }
@@ -2011,7 +2011,7 @@ impl Group {
 
             if let Node::Group(ref group) = child {
                 let r = group.layer_bounding_box;
-                if let Some(r) = r.transform(group.transform) {
+                if let Some(r) = r.fast_transform(group.transform) {
                     layer_bbox = layer_bbox.expand(r);
                 }
             } else {
@@ -2036,8 +2036,44 @@ impl Group {
             self.layer_bounding_box = layer_bbox.to_non_zero_rect()?;
         }
 
-        self.abs_layer_bounding_box = self.layer_bounding_box.transform(self.abs_transform)?;
+        self.abs_layer_bounding_box = self.layer_bounding_box.fast_transform(self.abs_transform)?;
 
         Some(())
+    }
+}
+
+/// Allocation free replacements for `Rect::transform` and `NonZeroRect::transform`,
+/// which build and transform a whole path just to transform four corners. The result
+/// is computed with exactly the same arithmetic.
+pub(crate) trait FastTransform: Sized {
+    fn fast_transform(&self, ts: Transform) -> Option<Self>;
+}
+
+impl FastTransform for Rect {
+    #[inline]
+    fn fast_transform(&self, ts: Transform) -> Option<Self> {
+        if ts.is_identity() {
+            return Some(*self);
+        }
+
+        let mut points = [
+            tiny_skia_path::Point::from_xy(self.left(), self.top()),
+            tiny_skia_path::Point::from_xy(self.right(), self.top()),
+            tiny_skia_path::Point::from_xy(self.right(), self.bottom()),
+            tiny_skia_path::Point::from_xy(self.left(), self.bottom()),
+        ];
+        ts.map_points(&mut points);
+        Rect::from_points(&points)
+    }
+}
+
+impl FastTransform for NonZeroRect {
+    #[inline]
+    fn fast_transform(&self, ts: Transform) -> Option<Self> {
+        if ts.is_identity() {
+            return Some(*self);
+        }
+
+        self.to_rect().fast_transform(ts)?.to_non_zero_rect()
     }
 }

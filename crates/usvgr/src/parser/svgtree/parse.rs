@@ -809,20 +809,42 @@ fn prepare_raw_svgtree(doc: &mut Document) -> Result<(), Error> {
         None => return Err(roxmltree::Error::NoRootNode.into()),
     }
 
-    // Collect all elements with `id` attribute.
+    // Collect all elements with `id` attribute and note which elements the recursion
+    // fixes below have to look at, so a document without them is walked only once.
     let mut links = HashMap::new();
+    let (mut has_pattern, mut has_clip_path, mut has_mask, mut has_filter, mut has_fe_image) =
+        (false, false, false, false, false);
     for node in doc.descendants() {
+        match node.tag_name() {
+            Some(EId::Pattern) => has_pattern = true,
+            Some(EId::ClipPath) => has_clip_path = true,
+            Some(EId::Mask) => has_mask = true,
+            Some(EId::Filter) => has_filter = true,
+            Some(EId::FeImage) => has_fe_image = true,
+            _ => {}
+        }
+
         if let Some(id) = node.attribute::<&str>(AId::Id) {
             links.insert(id.to_string(), node.id);
         }
     }
 
     doc.links = links;
-    fix_recursive_patterns(doc);
-    fix_recursive_links(EId::ClipPath, AId::ClipPath, doc);
-    fix_recursive_links(EId::Mask, AId::Mask, doc);
-    fix_recursive_links(EId::Filter, AId::Filter, doc);
-    fix_recursive_fe_image(doc);
+    if has_pattern {
+        fix_recursive_patterns(doc);
+    }
+    if has_clip_path {
+        fix_recursive_links(EId::ClipPath, AId::ClipPath, doc);
+    }
+    if has_mask {
+        fix_recursive_links(EId::Mask, AId::Mask, doc);
+    }
+    if has_filter {
+        fix_recursive_links(EId::Filter, AId::Filter, doc);
+    }
+    if has_fe_image {
+        fix_recursive_fe_image(doc);
+    }
 
     Ok(())
 }
