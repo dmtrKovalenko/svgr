@@ -1,3 +1,4 @@
+use crate::blit::FastDrawPixmap;
 use tiny_skia::IntSize;
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -100,7 +101,7 @@ fn render_vector(
         },
     )?;
 
-    pixmap.draw_pixmap(
+    pixmap.fast_draw_pixmap(
         0,
         0,
         sub_pixmap.as_ref(),
