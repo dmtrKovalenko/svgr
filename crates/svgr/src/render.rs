@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use crate::blit::FastDrawPixmap;
 pub trait TinySkiaPixmapMutExt {
     fn create_rect_mask(
         &self,
@@ -258,7 +259,7 @@ fn draw_cached_static_group(
     // The sub-pixmap was rendered at canvas scale with final_ibbox.top-left at (0,0).
     // Draw it back at the integer canvas position with identity transform — no downscaling,
     // no bilinear filtering artifacts from the viewbox scale.
-    pixmap.draw_pixmap(
+    pixmap.fast_draw_pixmap(
         final_ibbox.x(),
         final_ibbox.y(),
         cached.as_ref(),
@@ -329,7 +330,7 @@ fn render_isolated_group(
         quality: tiny_skia::FilterQuality::Bilinear,
     };
 
-    pixmap.draw_pixmap(
+    pixmap.fast_draw_pixmap(
         final_ibbox.x(),
         final_ibbox.y(),
         sub_pixmap.as_ref(),

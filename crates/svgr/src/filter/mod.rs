@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use crate::blit::FastDrawPixmap;
 use std::rc::Rc;
 
 use rgb::{FromSlice, RGBA8};
@@ -631,7 +632,7 @@ fn apply_drop_shadow(
         usvgr::filter::ColorInterpolation::LinearRGB => shadow_pixmap.into_linear_rgb(),
     }
 
-    pixmap.draw_pixmap(
+    pixmap.fast_draw_pixmap(
         dx as i32,
         dy as i32,
         shadow_pixmap.as_ref(),
@@ -640,7 +641,7 @@ fn apply_drop_shadow(
         None,
     );
 
-    pixmap.draw_pixmap(
+    pixmap.fast_draw_pixmap(
         0,
         0,
         input_pixmap.as_ref(),
@@ -694,7 +695,7 @@ fn apply_offset(
         .take_or_allocate(input.width(), input.height())
         .ok_or(Error::NoResults)?;
 
-    pixmap.draw_pixmap(
+    pixmap.fast_draw_pixmap(
         dx as i32,
         dy as i32,
         input.as_ref().as_ref(),
@@ -721,7 +722,7 @@ fn apply_blend(
         .take_or_allocate(region.width(), region.height())
         .ok_or(Error::NoResults)?;
 
-    pixmap.draw_pixmap(
+    pixmap.fast_draw_pixmap(
         0,
         0,
         input2.as_ref().as_ref(),
@@ -730,7 +731,7 @@ fn apply_blend(
         None,
     );
 
-    pixmap.draw_pixmap(
+    pixmap.fast_draw_pixmap(
         0,
         0,
         input1.as_ref().as_ref(),
@@ -779,7 +780,7 @@ fn apply_composite(
         return Ok(Image::from_image(pixmap, cs));
     }
 
-    pixmap.draw_pixmap(
+    pixmap.fast_draw_pixmap(
         0,
         0,
         input2.as_ref().as_ref(),
@@ -797,7 +798,7 @@ fn apply_composite(
         Operator::Arithmetic { .. } => tiny_skia::BlendMode::SourceOver,
     };
 
-    pixmap.draw_pixmap(
+    pixmap.fast_draw_pixmap(
         0,
         0,
         input1.as_ref().as_ref(),
@@ -827,7 +828,7 @@ fn apply_merge(
     for input in fe.inputs() {
         let input = get_input(input, region, source, results)?;
         let input = input.into_color_space(cs)?;
-        pixmap.draw_pixmap(
+        pixmap.fast_draw_pixmap(
             0,
             0,
             input.as_ref().as_ref(),
@@ -1190,7 +1191,7 @@ fn apply_to_canvas(input: Image, pixmap: &mut tiny_skia::Pixmap) -> Result<(), E
     let input = input.into_color_space(usvgr::filter::ColorInterpolation::SRGB)?;
 
     pixmap.fill(tiny_skia::Color::TRANSPARENT);
-    pixmap.draw_pixmap(
+    pixmap.fast_draw_pixmap(
         0,
         0,
         input.as_ref().as_ref(),

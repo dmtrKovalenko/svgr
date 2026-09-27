@@ -18,6 +18,7 @@
 pub use tiny_skia;
 pub use usvgr;
 
+mod blit;
 mod cache;
 mod clip;
 mod filter;
