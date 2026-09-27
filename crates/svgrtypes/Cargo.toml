@@ -1,6 +1,6 @@
 [package]
 name = "svgrtypes"
-version = "0.45.1"
+version = "0.46.0"
 authors = ["Yevhenii Reizner <razrfalcon@gmail.com>"]
 categories = ["parser-implementations"]
 description = "SVG types parser."
