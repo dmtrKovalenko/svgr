@@ -1147,6 +1147,65 @@ impl std::hash::Hash for Group {
 }
 
 impl Group {
+    /// Hashes what the group draws in its own coordinate system: the group's own
+    /// transform, opacity and blend mode and every absolute (canvas space) value are left
+    /// out, so the same content placed elsewhere hashes the same. Renderers use it to reuse rendered layers of
+    /// moving content.
+    ///
+    /// Returns `None` without a meaningful hash for content that can not be hashed that
+    /// way (images, clip paths and masks, which hold absolute values).
+    pub fn content_hash<H: std::hash::Hasher>(&self, state: &mut H) -> Option<()> {
+        self.content_hash_impl(state, false)
+    }
+
+    fn content_hash_impl<H: std::hash::Hasher>(
+        &self,
+        state: &mut H,
+        include_transform: bool,
+    ) -> Option<()> {
+        use crate::hashers::CustomHash;
+        use std::hash::Hash;
+
+        if self.clip_path.is_some() || self.mask.is_some() {
+            return None;
+        }
+
+        // the outermost group's opacity and blend mode apply when its layer is drawn
+        if include_transform {
+            self.transform.custom_hash(state);
+            self.opacity.hash(state);
+            (self.blend_mode as u8).hash(state);
+        }
+        self.isolate.hash(state);
+        self.filters.hash(state);
+
+        self.children.len().hash(state);
+        for child in &self.children {
+            match child {
+                Node::Group(group) => {
+                    0u8.hash(state);
+                    group.content_hash_impl(state, true)?;
+                }
+                Node::Text(text) => {
+                    1u8.hash(state);
+                    text.flattened().content_hash_impl(state, true)?;
+                }
+                Node::Path(path) => {
+                    2u8.hash(state);
+                    path.visibility.hash(state);
+                    path.fill.hash(state);
+                    path.stroke.hash(state);
+                    path.paint_order.hash(state);
+                    path.rendering_mode.hash(state);
+                    path.data.custom_hash(state);
+                }
+                Node::Image(_) => return None,
+            }
+        }
+
+        Some(())
+    }
+
     pub(crate) fn empty() -> Self {
         let dummy = Rect::from_xywh(0.0, 0.0, 0.0, 0.0).unwrap();
         Group {

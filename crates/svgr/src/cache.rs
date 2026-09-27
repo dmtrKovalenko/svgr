@@ -259,6 +259,59 @@ pub struct SvgrCache<RandomState: BuildHasher = ahash::RandomState> {
     static_cache: Option<StaticCache>,
     /// Raster images already resampled to the size they are drawn at
     pub(crate) images: Option<ImageResampleCache>,
+    /// Rendered layers of filtered groups keyed by their content, see `render_isolated_group`
+    pub(crate) layers: Option<LayerCache>,
+}
+
+/// Least recently used layers within a memory budget.
+#[derive(Debug)]
+pub(crate) struct LayerCache {
+    lru: LruCache<u64, CachedLayer>,
+    bytes: usize,
+}
+
+impl LayerCache {
+    const MAX_BYTES: usize = 64 * 1024 * 1024;
+
+    fn new() -> Self {
+        Self {
+            lru: LruCache::unbounded(),
+            bytes: 0,
+        }
+    }
+
+    pub(crate) fn get(&mut self, key: u64) -> Option<&CachedLayer> {
+        self.lru.get(&key)
+    }
+
+    pub(crate) fn insert(&mut self, key: u64, layer: CachedLayer) {
+        let size = layer.pixmap.data().len();
+        if size > Self::MAX_BYTES / 8 {
+            return;
+        }
+
+        self.bytes += size;
+        if let Some(replaced) = self.lru.put(key, layer) {
+            self.bytes -= replaced.pixmap.data().len();
+        }
+        while self.bytes > Self::MAX_BYTES {
+            let Some((_, evicted)) = self.lru.pop_lru() else {
+                break;
+            };
+            self.bytes -= evicted.pixmap.data().len();
+        }
+    }
+}
+
+/// A rendered group layer and where it was drawn, so the same content drawn at another
+/// position can be shifted instead of rendered again.
+#[derive(Debug)]
+pub(crate) struct CachedLayer {
+    pub(crate) pixmap: Pixmap,
+    /// Canvas position of the pixmap's top left corner.
+    pub(crate) origin: (i32, i32),
+    /// Translation of the transform the layer was rendered with.
+    pub(crate) translation: (f32, f32),
 }
 
 /// Raster images resampled to their on-canvas size and sub-pixel position. Resampling
@@ -324,6 +377,7 @@ impl SvgrCache {
             lru_cache: None,
             static_cache: Some(StaticCache::new()),
             images: Some(ImageResampleCache::default()),
+            layers: None,
         }
     }
 
@@ -356,6 +410,7 @@ impl SvgrCache {
                 config.initial_capacity,
             )),
             images: Some(ImageResampleCache::default()),
+            layers: (lru_size > 0).then(LayerCache::new),
         }
     }
 }
@@ -480,6 +535,7 @@ impl<THashBuilder: BuildHasher + Default> SvgrCache<THashBuilder> {
             lru_cache: None,
             static_cache: None,
             images: None,
+            layers: None,
         }
     }
 
@@ -499,6 +555,7 @@ impl<THashBuilder: BuildHasher + Default> SvgrCache<THashBuilder> {
             lru_cache,
             static_cache: Some(StaticCache::new()),
             images: Some(ImageResampleCache::default()),
+            layers: (lru_size > 0).then(LayerCache::new),
         }
     }
 
@@ -513,6 +570,7 @@ impl<THashBuilder: BuildHasher + Default> SvgrCache<THashBuilder> {
                 }),
                 static_cache: None,
                 images: Some(ImageResampleCache::default()),
+                layers: (lru_size > 0).then(LayerCache::new),
             }
         } else {
             Self::none()
@@ -535,6 +593,7 @@ impl<THashBuilder: BuildHasher + Default> SvgrCache<THashBuilder> {
             lru_cache,
             static_cache: Some(StaticCache::unlimited()),
             images: Some(ImageResampleCache::default()),
+            layers: (lru_size > 0).then(LayerCache::new),
         }
     }
 

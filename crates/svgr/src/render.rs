@@ -290,11 +290,28 @@ fn render_isolated_group(
     } else {
         final_bbox.to_int_rect()
     };
+    let unclipped_ibbox = final_ibbox;
     let final_ibbox = crate::geom::fit_to_rect(final_ibbox, ctx.max_bbox)?;
 
     let render_transform_in_subpixmap =
         tiny_skia::Transform::from_translate(-(final_ibbox.x() as f32), -(final_ibbox.y() as f32))
             .pre_concat(final_transform);
+
+    if !group.filters().is_empty() && final_ibbox == unclipped_ibbox {
+        if let Some(key) = layer_cache_key(group, final_transform) {
+            return render_layer_cached(
+                group,
+                ctx,
+                key,
+                final_transform,
+                final_ibbox,
+                render_transform_in_subpixmap,
+                pixmap,
+                cache,
+                pixmap_pool,
+            );
+        }
+    }
 
     let sub_pixmap = cache.with_subpixmap_cache(
         group,
@@ -337,6 +354,131 @@ fn render_isolated_group(
         &paint,
         tiny_skia::Transform::identity(),
         None,
+    );
+
+    Some(())
+}
+
+/// Identifies what a filtered group renders independently of where it is drawn: its
+/// content, the scale/rotation part of the transform and, unless only blurs are applied,
+/// the sub-pixel part of the translation. Moving content by whole pixels (any distance for
+/// blurred content) can then reuse the layer, which is what animated glows, shadows and
+/// bokeh do on every frame.
+struct LayerKey {
+    key: u64,
+    /// Blurred content is reused at other sub-pixel offsets with bilinear filtering.
+    smooth: bool,
+}
+
+fn layer_cache_key(group: &usvgr::Group, transform: tiny_skia::Transform) -> Option<LayerKey> {
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = usvgr::ahash::AHasher::default();
+    group.content_hash(&mut hasher)?;
+    for value in [transform.sx, transform.kx, transform.ky, transform.sy] {
+        value.to_bits().hash(&mut hasher);
+    }
+
+    let scale = transform
+        .sx
+        .hypot(transform.ky)
+        .min(transform.kx.hypot(transform.sy));
+    let smooth = group.blend_mode() == usvgr::BlendMode::Normal
+        && group.filters().iter().all(|filter| {
+            filter
+                .primitives()
+                .iter()
+                .all(|primitive| match primitive.kind() {
+                    usvgr::filter::Kind::GaussianBlur(blur) => {
+                        blur.std_dev_x().get().min(blur.std_dev_y().get()) * scale >= 1.5
+                    }
+                    _ => false,
+                })
+        });
+    smooth.hash(&mut hasher);
+    if !smooth {
+        transform.tx.fract().to_bits().hash(&mut hasher);
+        transform.ty.fract().to_bits().hash(&mut hasher);
+    }
+
+    Some(LayerKey {
+        key: hasher.finish(),
+        smooth,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_layer_cached(
+    group: &usvgr::Group,
+    ctx: &Context,
+    LayerKey { key, smooth }: LayerKey,
+    final_transform: tiny_skia::Transform,
+    final_ibbox: tiny_skia::IntRect,
+    render_transform: tiny_skia::Transform,
+    pixmap: &mut tiny_skia::PixmapMut,
+    cache: &mut crate::cache::SvgrCache,
+    pixmap_pool: &crate::cache::PixmapPool,
+) -> Option<()> {
+    let paint = tiny_skia::PixmapPaint {
+        opacity: group.opacity().get(),
+        blend_mode: convert_blend_mode(group.blend_mode()),
+        quality: tiny_skia::FilterQuality::Bilinear,
+    };
+
+    let cached = cache.layers.as_mut()?.get(key).map(|layer| {
+        let x = layer.origin.0 as f32 + (final_transform.tx - layer.translation.0);
+        let y = layer.origin.1 as f32 + (final_transform.ty - layer.translation.1);
+        if smooth {
+            crate::blit::source_over_translated(pixmap, x, y, layer.pixmap.as_ref(), paint.opacity);
+        } else {
+            pixmap.fast_draw_pixmap(
+                x.round() as i32,
+                y.round() as i32,
+                layer.pixmap.as_ref(),
+                &paint,
+                tiny_skia::Transform::identity(),
+                None,
+            );
+        }
+    });
+    if cached.is_some() {
+        return Some(());
+    }
+
+    let mut sub_pixmap = tiny_skia::Pixmap::new(final_ibbox.width(), final_ibbox.height())?;
+    render_nodes(
+        group,
+        ctx,
+        render_transform,
+        &mut sub_pixmap.as_mut(),
+        cache,
+        pixmap_pool,
+    );
+    apply_group_effects(
+        group,
+        render_transform,
+        &mut sub_pixmap,
+        cache,
+        ctx,
+        pixmap_pool,
+    );
+
+    pixmap.fast_draw_pixmap(
+        final_ibbox.x(),
+        final_ibbox.y(),
+        sub_pixmap.as_ref(),
+        &paint,
+        tiny_skia::Transform::identity(),
+        None,
+    );
+
+    cache.layers.as_mut()?.insert(
+        key,
+        crate::cache::CachedLayer {
+            pixmap: sub_pixmap,
+            origin: (final_ibbox.x(), final_ibbox.y()),
+            translation: (final_transform.tx, final_transform.ty),
+        },
     );
 
     Some(())
