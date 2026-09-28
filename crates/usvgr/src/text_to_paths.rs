@@ -1177,6 +1177,7 @@ fn outline_cluster(
 
     let mut builder = tiny_skia_path::PathBuilder::new();
     let mut width = 0.0;
+    let mut advance = 0.0;
     let mut x: f32 = 0.0;
 
     for glyph in glyphs {
@@ -1205,6 +1206,7 @@ fn outline_cluster(
         x += glyph.width as f32;
 
         let glyph_width = glyph.width as f32 * sx;
+        advance += glyph_width;
         if glyph_width > width {
             width = glyph_width;
         }
@@ -1216,7 +1218,7 @@ fn outline_cluster(
         byte_idx,
         codepoint: byte_idx.char_from(text),
         width,
-        advance: width,
+        advance,
         ascent: font.ascent(font_size),
         descent: font.descent(font_size),
         x_height: font.x_height(font_size),
