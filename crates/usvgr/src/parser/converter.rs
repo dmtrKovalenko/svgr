@@ -626,6 +626,38 @@ pub(crate) fn convert_group(
     parent: &mut Group,
     collect_children: &dyn Fn(&mut Cache, &mut Group),
 ) -> Option<Group> {
+    // Shapes without compositing attributes can append directly to their parent.
+    if !force
+        && matches!(
+            node.tag_name(),
+            Some(
+                EId::Rect
+                    | EId::Circle
+                    | EId::Ellipse
+                    | EId::Line
+                    | EId::Polyline
+                    | EId::Polygon
+                    | EId::Path
+            )
+        )
+        && !node.attributes().iter().any(|attr| {
+            matches!(
+                attr.name,
+                AId::Transform
+                    | AId::TransformOrigin
+                    | AId::Opacity
+                    | AId::MixBlendMode
+                    | AId::Isolation
+                    | AId::ClipPath
+                    | AId::Mask
+                    | AId::Filter
+            )
+        })
+    {
+        collect_children(cache, parent);
+        return None;
+    }
+
     // A `clipPath` child cannot have an opacity.
     let opacity = if state.parent_clip_path.is_none() {
         node.attribute::<Opacity>(AId::Opacity)

@@ -98,3 +98,44 @@ fn tree_is_send_and_sync() {
     fn ensure_send_and_sync<T: Send + Sync>() {}
     ensure_send_and_sync::<usvgr::Tree>();
 }
+
+#[test]
+fn plain_shapes_match_temporary_group_conversion() {
+    let fontdb = usvgr::fontdb::Database::new();
+    let shapes = [
+        "<rect EXTRA x='10%' y='5' width='40%' height='30' rx='4'/>",
+        "<circle EXTRA cx='40' cy='40' r='20'/>",
+        "<ellipse EXTRA cx='40' cy='40' rx='20' ry='10'/>",
+        "<line EXTRA x1='10' y1='10' x2='60' y2='40'/>",
+        "<polyline EXTRA points='10,10 40,60 70,10'/>",
+        "<polygon EXTRA points='10,10 40,60 70,10'/>",
+        "<path EXTRA d='M10 10 Q40 60 70 10 L70 60 Z'/>",
+    ];
+    for parent in [
+        "fill='currentColor' color='red' stroke='blue' stroke-width='3'",
+        "transform='translate(.25 .5) rotate(20 50 50)' fill='url(#gradient)' opacity='.6'",
+        "clip-path='url(#clip)' mask='url(#mask)' filter='url(#blur)'",
+        "marker-start='url(#marker)' marker-end='url(#marker)' stroke='blue' paint-order='stroke markers fill'",
+    ] {
+        for shape in shapes {
+            let convert = |extra: &str| {
+                let shape = shape.replace("EXTRA", extra);
+                let svg = format!(
+                    "<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'>
+                    <defs>
+                        <linearGradient id='gradient'><stop stop-color='red'/><stop offset='1' stop-color='blue'/></linearGradient>
+                        <clipPath id='clip'><circle cx='50' cy='50' r='40'/></clipPath>
+                        <mask id='mask'><rect width='100' height='100' fill='white'/></mask>
+                        <filter id='blur'><feGaussianBlur stdDeviation='2'/></filter>
+                        <marker id='marker' markerWidth='6' markerHeight='6'><path d='M0 0 L6 3 L0 6 Z'/></marker>
+                    </defs><g {parent}>{shape}</g></svg>"
+                );
+                usvgr::Tree::from_str(&svg, &usvgr::Options::default(), &fontdb)
+                    .unwrap()
+                    .to_string(&usvgr::WriteOptions::default())
+            };
+            // An explicit no-op filter keeps the original temporary-group path.
+            assert_eq!(convert(""), convert("filter='none'"), "{parent}: {shape}");
+        }
+    }
+}
