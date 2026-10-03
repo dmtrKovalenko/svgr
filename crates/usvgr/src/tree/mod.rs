@@ -973,6 +973,7 @@ pub enum Node {
     Path(Box<Path>),
     Image(Box<Image>),
     Text(Box<Text>),
+    FastShape(Box<FastShape>),
 }
 
 impl Node {
@@ -983,6 +984,7 @@ impl Node {
             Node::Path(ref e) => e.id.as_str(),
             Node::Image(ref e) => e.id.as_str(),
             Node::Text(ref e) => e.id.as_str(),
+            Node::FastShape(ref e) => e.path.id.as_str(),
         }
     }
 
@@ -998,6 +1000,7 @@ impl Node {
             Node::Path(ref path) => path.abs_transform(),
             Node::Image(ref image) => image.abs_transform(),
             Node::Text(ref text) => text.abs_transform(),
+            Node::FastShape(ref shape) => shape.path.abs_transform(),
         }
     }
 
@@ -1008,6 +1011,7 @@ impl Node {
             Node::Path(ref path) => path.bounding_box(),
             Node::Image(ref image) => image.bounding_box(),
             Node::Text(ref text) => text.bounding_box(),
+            Node::FastShape(ref shape) => shape.path.bounding_box(),
         }
     }
 
@@ -1018,6 +1022,7 @@ impl Node {
             Node::Path(ref path) => path.abs_bounding_box(),
             Node::Image(ref image) => image.abs_bounding_box(),
             Node::Text(ref text) => text.abs_bounding_box(),
+            Node::FastShape(ref shape) => shape.path.abs_bounding_box(),
         }
     }
 
@@ -1029,6 +1034,7 @@ impl Node {
             // Image cannot be stroked.
             Node::Image(ref image) => image.bounding_box(),
             Node::Text(ref text) => text.stroke_bounding_box(),
+            Node::FastShape(ref shape) => shape.path.stroke_bounding_box(),
         }
     }
 
@@ -1040,6 +1046,7 @@ impl Node {
             // Image cannot be stroked.
             Node::Image(ref image) => image.abs_bounding_box(),
             Node::Text(ref text) => text.abs_stroke_bounding_box(),
+            Node::FastShape(ref shape) => shape.path.abs_stroke_bounding_box(),
         }
     }
 
@@ -1056,6 +1063,7 @@ impl Node {
             Node::Path(ref path) => path.abs_bounding_box().to_non_zero_rect(),
             Node::Image(ref image) => image.abs_bounding_box().to_non_zero_rect(),
             Node::Text(ref text) => text.abs_bounding_box().to_non_zero_rect(),
+            Node::FastShape(ref shape) => shape.path.abs_bounding_box().to_non_zero_rect(),
         }
     }
 
@@ -1089,6 +1097,7 @@ impl Node {
             Node::Path(ref path) => path.subroots(&mut f),
             Node::Image(ref image) => image.subroots(&mut f),
             Node::Text(ref text) => text.subroots(&mut f),
+            Node::FastShape(ref shape) => shape.path.subroots(&mut f),
         }
     }
 }
@@ -1190,7 +1199,16 @@ impl Group {
                     1u8.hash(state);
                     text.flattened().content_hash_impl(state, true)?;
                 }
-                Node::Path(path) => {
+                Node::Path(_) | Node::FastShape(_) => {
+                    let path = match child {
+                        // The data is only the bounding rectangle, so the kind tells shapes apart.
+                        Node::FastShape(shape) => {
+                            shape.kind.hash(state);
+                            &shape.path
+                        }
+                        Node::Path(path) => path,
+                        _ => unreachable!(),
+                    };
                     2u8.hash(state);
                     path.visibility.hash(state);
                     path.fill.hash(state);
@@ -1438,6 +1456,136 @@ impl Default for PaintOrder {
     }
 }
 
+/// What a [`FastShape`] is, in its path's user space.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum FastShapeKind {
+    /// A `circle` or `ellipse`, by its bounding rectangle.
+    Ellipse(NonZeroRect),
+    /// A `rect` with rounded corners. The radii are already clamped to half the size.
+    RoundRect {
+        /// The rectangle.
+        rect: NonZeroRect,
+        /// Horizontal corner radius.
+        rx: f32,
+        /// Vertical corner radius.
+        ry: f32,
+    },
+}
+
+impl std::hash::Hash for FastShapeKind {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let (tag, rect, rx, ry) = match *self {
+            FastShapeKind::Ellipse(rect) => (0u8, rect, 0.0, 0.0),
+            FastShapeKind::RoundRect { rect, rx, ry } => (1u8, rect, rx, ry),
+        };
+        tag.hash(state);
+        for value in [rect.x(), rect.y(), rect.width(), rect.height(), rx, ry] {
+            value.to_bits().hash(state);
+        }
+    }
+}
+
+/// A basic shape a renderer can draw natively: `circle`, `ellipse` or a rounded `rect`.
+///
+/// Only produced with [`Options::fast_shapes`](crate::Options::fast_shapes), for renderers that
+/// draw [`FastShape::kind`] natively with the fill, stroke and transform of [`FastShape::path`].
+/// The outline is not built during conversion; renderers that need it call
+/// [`FastShape::to_path`].
+#[derive(Clone, Debug, Hash)]
+pub struct FastShape {
+    pub(crate) kind: FastShapeKind,
+    pub(crate) path: Path,
+}
+
+impl FastShape {
+    /// The shape's geometry.
+    pub fn kind(&self) -> FastShapeKind {
+        self.kind
+    }
+
+    /// Fill, stroke, transform and bounding boxes of the shape.
+    ///
+    /// Its [`Path::data`] is only the bounding rectangle, not the outline.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// [`FastShape::path`] with the real outline as its data, for renderers that do not draw
+    /// fast shapes natively.
+    pub fn to_path(&self) -> Option<Path> {
+        let mut path = self.path.clone();
+        path.data = Arc::new(self.kind.to_path()?);
+        Some(path)
+    }
+}
+
+impl FastShapeKind {
+    /// The rectangle the shape fills.
+    pub fn rect(&self) -> NonZeroRect {
+        match *self {
+            FastShapeKind::Ellipse(rect) | FastShapeKind::RoundRect { rect, .. } => rect,
+        }
+    }
+
+    /// The outline as cubic curves, starting where the SVG spec's path for the element starts
+    /// and going clockwise, so dashes line up.
+    pub fn to_path(&self) -> Option<tiny_skia_path::Path> {
+        match *self {
+            FastShapeKind::Ellipse(rect) => {
+                round_rect_outline(rect, rect.width() / 2.0, rect.height() / 2.0, true)
+            }
+            FastShapeKind::RoundRect { rect, rx, ry } => round_rect_outline(rect, rx, ry, false),
+        }
+    }
+}
+
+/// A rect with elliptical corners: one cubic per corner, joined by the straight edges that are
+/// left. Starts where the SVG spec's decomposition starts, at the end of the top-left corner for
+/// a `rect` and at the rightmost point for a `circle`/`ellipse`, and goes clockwise.
+fn round_rect_outline(
+    rect: NonZeroRect,
+    rx: f32,
+    ry: f32,
+    start_at_right: bool,
+) -> Option<tiny_skia_path::Path> {
+    // 4/3 * (sqrt(2) - 1): a cubic through the quarter arc's ends and midpoint.
+    const KAPPA: f32 = 0.552_284_8;
+    let (kx, ky) = (rx * (1.0 - KAPPA), ry * (1.0 - KAPPA));
+    let (l, t, r, b) = (rect.left(), rect.top(), rect.right(), rect.bottom());
+
+    // Each corner: where it starts, its two control points, where it ends.
+    let top_right = [(r - rx, t), (r - kx, t), (r, t + ky), (r, t + ry)];
+    let bottom_right = [(r, b - ry), (r, b - ky), (r - kx, b), (r - rx, b)];
+    let bottom_left = [(l + rx, b), (l + kx, b), (l, b - ky), (l, b - ry)];
+    let top_left = [(l, t + ry), (l, t + ky), (l + kx, t), (l + rx, t)];
+    let (start, corners) = if start_at_right {
+        (
+            top_right[3],
+            [bottom_right, bottom_left, top_left, top_right],
+        )
+    } else {
+        (
+            top_left[3],
+            [top_right, bottom_right, bottom_left, top_left],
+        )
+    };
+
+    // Edges shorter than this are where two corners meet, as in a circle or a pill.
+    let epsilon = (rect.width() + rect.height()) * 1e-6;
+    let mut builder = tiny_skia_path::PathBuilder::with_capacity(10, 17);
+    builder.move_to(start.0, start.1);
+    let mut current = start;
+    for [from, c1, c2, to] in corners {
+        if (from.0 - current.0).abs() > epsilon || (from.1 - current.1).abs() > epsilon {
+            builder.line_to(from.0, from.1);
+        }
+        builder.cubic_to(c1.0, c1.1, c2.0, c2.1, to.0, to.1);
+        current = to;
+    }
+    builder.close();
+    builder.finish()
+}
+
 /// A path element.
 #[derive(Clone, Debug)]
 pub struct Path {
@@ -1528,6 +1676,63 @@ impl Path {
             paint_order,
             rendering_mode,
             data,
+            abs_transform,
+            bounding_box,
+            abs_bounding_box,
+            stroke_bounding_box,
+            abs_stroke_bounding_box,
+            static_hash,
+        })
+    }
+
+    /// The path of a [`FastShape`]: bounding boxes come from the shape's rectangle and the
+    /// outline is only built under a skewing transform. `data` is the bounding rectangle.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_fast_shape(
+        id: String,
+        visibility: Visibility,
+        fill: Option<Fill>,
+        stroke: Option<Stroke>,
+        paint_order: PaintOrder,
+        rendering_mode: ShapeRendering,
+        kind: FastShapeKind,
+        abs_transform: Transform,
+        static_hash: Option<u64>,
+    ) -> Option<Self> {
+        let bounding_box = kind.rect().to_rect();
+        // Ovals and rounded rects are smooth and closed: no join or cap reaches past half the
+        // stroke width.
+        let half = stroke
+            .as_ref()
+            .map_or(0.0, |stroke| stroke.width.get() / 2.0);
+        let stroke_bounding_box = Rect::from_ltrb(
+            bounding_box.left() - half,
+            bounding_box.top() - half,
+            bounding_box.right() + half,
+            bounding_box.bottom() + half,
+        )?;
+
+        let (abs_bounding_box, abs_stroke_bounding_box) = if abs_transform.has_skew() {
+            let outline = kind.to_path()?.transform(abs_transform)?;
+            let abs_bounding_box = outline.compute_tight_bounds()?;
+            let abs_stroke_bounding_box =
+                Path::calculate_stroke_bbox(stroke.as_ref(), &outline).unwrap_or(abs_bounding_box);
+            (abs_bounding_box, abs_stroke_bounding_box)
+        } else {
+            (
+                bounding_box.fast_transform(abs_transform)?,
+                stroke_bounding_box.fast_transform(abs_transform)?,
+            )
+        };
+
+        Some(Path {
+            id,
+            visibility,
+            fill,
+            stroke,
+            paint_order,
+            rendering_mode,
+            data: Arc::new(tiny_skia_path::PathBuilder::from_rect(bounding_box)),
             abs_transform,
             bounding_box,
             abs_bounding_box,
@@ -1942,6 +2147,10 @@ fn loop_over_paint_servers(parent: &Group, f: &mut dyn FnMut(&Paint)) {
             Node::Path(ref path) => {
                 push(path.fill.as_ref().map(|f| &f.paint), f);
                 push(path.stroke.as_ref().map(|f| &f.paint), f);
+            }
+            Node::FastShape(ref shape) => {
+                push(shape.path.fill.as_ref().map(|f| &f.paint), f);
+                push(shape.path.stroke.as_ref().map(|f| &f.paint), f);
             }
             Node::Image(_) => {}
             // Flattened text would be used instead.

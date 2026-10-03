@@ -9,7 +9,7 @@ use tiny_skia_path::Path;
 
 use super::svgtree::{AId, EId, SvgAttributeValueRef, SvgNode};
 use super::{converter, units};
-use crate::{ApproxEqUlps, IsValidLength, Rect};
+use crate::{ApproxEqUlps, FastShapeKind, IsValidLength, NonZeroRect, Rect};
 
 pub(crate) fn convert(node: SvgNode, state: &converter::State) -> Option<Arc<Path>> {
     match node.tag_name()? {
@@ -282,6 +282,38 @@ fn convert_path_from_string(value: &str) -> Option<Arc<Path>> {
 }
 
 fn convert_rect(node: SvgNode, state: &converter::State) -> Option<Arc<Path>> {
+    let (rect, rx, ry) = resolve_rect(node, state)?;
+    let (x, y, width, height) = (rect.x(), rect.y(), rect.width(), rect.height());
+
+    // Conversion according to https://www.w3.org/TR/SVG11/shapes.html#RectElement
+    let path = if rx.approx_eq_ulps(&0.0, 4) {
+        tiny_skia_path::PathBuilder::from_rect(rect)
+    } else {
+        let mut builder = tiny_skia_path::PathBuilder::new();
+        builder.move_to(x + rx, y);
+
+        builder.line_to(x + width - rx, y);
+        builder.arc_to(rx, ry, 0.0, false, true, x + width, y + ry);
+
+        builder.line_to(x + width, y + height - ry);
+        builder.arc_to(rx, ry, 0.0, false, true, x + width - rx, y + height);
+
+        builder.line_to(x + rx, y + height);
+        builder.arc_to(rx, ry, 0.0, false, true, x, y + height - ry);
+
+        builder.line_to(x, y + ry);
+        builder.arc_to(rx, ry, 0.0, false, true, x + rx, y);
+
+        builder.close();
+
+        builder.finish()?
+    };
+
+    Some(Arc::new(path))
+}
+
+/// The rect and its corner radii, clamped to half the size.
+fn resolve_rect(node: SvgNode, state: &converter::State) -> Option<(Rect, f32, f32)> {
     // 'width' and 'height' attributes must be positive and non-zero.
     let width = node.convert_user_length(AId::Width, state, Length::zero());
     let height = node.convert_user_length(AId::Height, state, Length::zero());
@@ -315,31 +347,7 @@ fn convert_rect(node: SvgNode, state: &converter::State) -> Option<Arc<Path>> {
         ry = height / 2.0;
     }
 
-    // Conversion according to https://www.w3.org/TR/SVG11/shapes.html#RectElement
-    let path = if rx.approx_eq_ulps(&0.0, 4) {
-        tiny_skia_path::PathBuilder::from_rect(Rect::from_xywh(x, y, width, height)?)
-    } else {
-        let mut builder = tiny_skia_path::PathBuilder::new();
-        builder.move_to(x + rx, y);
-
-        builder.line_to(x + width - rx, y);
-        builder.arc_to(rx, ry, 0.0, false, true, x + width, y + ry);
-
-        builder.line_to(x + width, y + height - ry);
-        builder.arc_to(rx, ry, 0.0, false, true, x + width - rx, y + height);
-
-        builder.line_to(x + rx, y + height);
-        builder.arc_to(rx, ry, 0.0, false, true, x, y + height - ry);
-
-        builder.line_to(x, y + ry);
-        builder.arc_to(rx, ry, 0.0, false, true, x + rx, y);
-
-        builder.close();
-
-        builder.finish()?
-    };
-
-    Some(Arc::new(path))
+    Some((Rect::from_xywh(x, y, width, height)?, rx, ry))
 }
 
 fn resolve_rx_ry(node: SvgNode, state: &converter::State) -> (f32, f32) {
@@ -447,24 +455,32 @@ fn points_to_path(node: SvgNode, eid: &str) -> Option<tiny_skia_path::PathBuilde
 }
 
 fn convert_circle(node: SvgNode, state: &converter::State) -> Option<Arc<Path>> {
-    let cx = node.convert_user_length(AId::Cx, state, Length::zero());
-    let cy = node.convert_user_length(AId::Cy, state, Length::zero());
-    let r = node.convert_user_length(AId::R, state, Length::zero());
-
-    if !r.is_valid_length() {
-        log::warn!(
-            "Circle '{}' has an invalid 'r' value. Skipped.",
-            node.element_id()
-        );
-        return None;
-    }
-
-    ellipse_to_path(cx, cy, r, r)
+    let (cx, cy, rx, ry) = resolve_ellipse(node, state)?;
+    ellipse_to_path(cx, cy, rx, ry)
 }
 
 fn convert_ellipse(node: SvgNode, state: &converter::State) -> Option<Arc<Path>> {
+    let (cx, cy, rx, ry) = resolve_ellipse(node, state)?;
+    ellipse_to_path(cx, cy, rx, ry)
+}
+
+/// Center and radii of a `circle` or `ellipse`.
+fn resolve_ellipse(node: SvgNode, state: &converter::State) -> Option<(f32, f32, f32, f32)> {
     let cx = node.convert_user_length(AId::Cx, state, Length::zero());
     let cy = node.convert_user_length(AId::Cy, state, Length::zero());
+
+    if node.tag_name() == Some(EId::Circle) {
+        let r = node.convert_user_length(AId::R, state, Length::zero());
+        if !r.is_valid_length() {
+            log::warn!(
+                "Circle '{}' has an invalid 'r' value. Skipped.",
+                node.element_id()
+            );
+            return None;
+        }
+        return Some((cx, cy, r, r));
+    }
+
     let (rx, ry) = resolve_rx_ry(node, state);
 
     if !rx.is_valid_length() {
@@ -483,7 +499,43 @@ fn convert_ellipse(node: SvgNode, state: &converter::State) -> Option<Arc<Path>>
         return None;
     }
 
-    ellipse_to_path(cx, cy, rx, ry)
+    Some((cx, cy, rx, ry))
+}
+
+/// [`Options::fast_shapes`](crate::Options::fast_shapes) conversion: `circle`, `ellipse` and
+/// rounded `rect` return their [`FastShapeKind`] and only their bounding rectangle as the path;
+/// the outline is never built (see [`FastShapeKind::to_path`]). Every other element converts as
+/// usual.
+pub(crate) fn convert_shape(
+    node: SvgNode,
+    state: &converter::State,
+) -> Option<(Arc<Path>, Option<FastShapeKind>)> {
+    let kind = match node.tag_name()? {
+        EId::Circle | EId::Ellipse => {
+            let (cx, cy, rx, ry) = resolve_ellipse(node, state)?;
+            FastShapeKind::Ellipse(NonZeroRect::from_xywh(
+                cx - rx,
+                cy - ry,
+                rx * 2.0,
+                ry * 2.0,
+            )?)
+        }
+        EId::Rect => {
+            let (rect, rx, ry) = resolve_rect(node, state)?;
+            if rx.approx_eq_ulps(&0.0, 4) || ry.approx_eq_ulps(&0.0, 4) {
+                let path = tiny_skia_path::PathBuilder::from_rect(rect);
+                return Some((Arc::new(path), None));
+            }
+            FastShapeKind::RoundRect {
+                rect: rect.to_non_zero_rect()?,
+                rx,
+                ry,
+            }
+        }
+        _ => return convert(node, state).map(|path| (path, None)),
+    };
+    let bounds = tiny_skia_path::PathBuilder::from_rect(kind.rect().to_rect());
+    Some((Arc::new(bounds), Some(kind)))
 }
 
 fn ellipse_to_path(cx: f32, cy: f32, rx: f32, ry: f32) -> Option<Arc<Path>> {

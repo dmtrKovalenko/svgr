@@ -496,6 +496,11 @@ fn convert_element_impl(
     parent: &mut Group,
 ) {
     match tag_name {
+        EId::Rect | EId::Circle | EId::Ellipse if state.opt.fast_shapes => {
+            if let Some((path, shape)) = super::shapes::convert_shape(node, state) {
+                convert_path(node, path, shape, state, cache, parent);
+            }
+        }
         EId::Rect
         | EId::Circle
         | EId::Ellipse
@@ -504,7 +509,7 @@ fn convert_element_impl(
         | EId::Polygon
         | EId::Path => {
             if let Some(path) = super::shapes::convert(node, state) {
-                convert_path(node, path, state, cache, parent);
+                convert_path(node, path, None, state, cache, parent);
             }
         }
         EId::Image => {
@@ -580,7 +585,7 @@ fn convert_clip_path_elements_impl(
     match tag_name {
         EId::Rect | EId::Circle | EId::Ellipse | EId::Polyline | EId::Polygon | EId::Path => {
             if let Some(path) = super::shapes::convert(node, state) {
-                convert_path(node, path, state, cache, parent);
+                convert_path(node, path, None, state, cache, parent);
             }
         }
         EId::Text => {
@@ -750,9 +755,11 @@ pub(crate) fn convert_group(
     Some(g)
 }
 
+/// `shape` is set for the elements [`Options::fast_shapes`] keeps; they become [`Node::FastShape`].
 fn convert_path(
     node: SvgNode,
     tiny_skia_path: Arc<tiny_skia_path::Path>,
+    shape: Option<FastShapeKind>,
     state: &State,
     cache: &mut Cache,
     parent: &mut Group,
@@ -858,17 +865,30 @@ fn convert_path(
         String::new()
     };
 
-    let path = Path::new(
-        id,
-        visibility,
-        fill,
-        stroke,
-        paint_order,
-        rendering_mode,
-        tiny_skia_path,
-        path_transform,
-        node.static_hash(),
-    );
+    let path = match shape {
+        Some(kind) => Path::new_fast_shape(
+            id,
+            visibility,
+            fill,
+            stroke,
+            paint_order,
+            rendering_mode,
+            kind,
+            path_transform,
+            node.static_hash(),
+        ),
+        None => Path::new(
+            id,
+            visibility,
+            fill,
+            stroke,
+            paint_order,
+            rendering_mode,
+            tiny_skia_path,
+            path_transform,
+            node.static_hash(),
+        ),
+    };
 
     let path = match path {
         Some(v) => v,
@@ -881,36 +901,48 @@ fn convert_path(
                 parent.children.push(Node::Group(Box::new(markers_node)));
             }
 
-            parent.children.push(Node::Path(Box::new(path.clone())));
+            parent.children.push(path_node(path.clone(), shape));
         }
         [first, PaintOrderKind::Markers, last] => {
-            append_single_paint_path(first, &path, parent);
+            append_single_paint_path(first, &path, shape, parent);
 
             if let Some(markers_node) = marker {
                 parent.children.push(Node::Group(Box::new(markers_node)));
             }
 
-            append_single_paint_path(last, &path, parent);
+            append_single_paint_path(last, &path, shape, parent);
         }
         [_, _, PaintOrderKind::Markers] => {
-            parent.children.push(Node::Path(Box::new(path.clone())));
+            parent.children.push(path_node(path.clone(), shape));
 
             if let Some(markers_node) = marker {
                 parent.children.push(Node::Group(Box::new(markers_node)));
             }
         }
-        _ => parent.children.push(Node::Path(Box::new(path.clone()))),
+        _ => parent.children.push(path_node(path.clone(), shape)),
     }
 }
 
-fn append_single_paint_path(paint_order_kind: PaintOrderKind, path: &Path, parent: &mut Group) {
+fn path_node(path: Path, shape: Option<FastShapeKind>) -> Node {
+    match shape {
+        Some(kind) => Node::FastShape(Box::new(FastShape { kind, path })),
+        None => Node::Path(Box::new(path)),
+    }
+}
+
+fn append_single_paint_path(
+    paint_order_kind: PaintOrderKind,
+    path: &Path,
+    shape: Option<FastShapeKind>,
+    parent: &mut Group,
+) {
     match paint_order_kind {
         PaintOrderKind::Fill => {
             if path.fill.is_some() {
                 let mut fill_path = path.clone();
                 fill_path.stroke = None;
                 fill_path.id = String::new();
-                parent.children.push(Node::Path(Box::new(fill_path)));
+                parent.children.push(path_node(fill_path, shape));
             }
         }
         PaintOrderKind::Stroke => {
@@ -918,7 +950,7 @@ fn append_single_paint_path(paint_order_kind: PaintOrderKind, path: &Path, paren
                 let mut stroke_path = path.clone();
                 stroke_path.fill = None;
                 stroke_path.id = String::new();
-                parent.children.push(Node::Path(Box::new(stroke_path)));
+                parent.children.push(path_node(stroke_path, shape));
             }
         }
         _ => {}

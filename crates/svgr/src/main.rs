@@ -554,6 +554,7 @@ fn parse_args() -> Result<Args, String> {
         font_size: args.font_size as f32,
         languages: args.languages,
         shape_rendering: args.shape_rendering,
+        fast_shapes: false,
         text_rendering: args.text_rendering,
         image_rendering: args.image_rendering,
         default_size,

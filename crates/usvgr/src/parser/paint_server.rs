@@ -614,7 +614,12 @@ fn node_to_user_coordinates(
 
             update_paint_servers(g, context_transform, context_bbox, text_bbox, cache);
         }
-        Node::Path(ref mut path) => {
+        Node::Path(_) | Node::FastShape(_) => {
+            let path = match node {
+                Node::Path(path) => &mut **path,
+                Node::FastShape(shape) => &mut shape.path,
+                _ => unreachable!(),
+            };
             // Paths inside `Text::flattened` are special and must use text's bounding box
             // instead of their own.
             let bbox = text_bbox.unwrap_or(path.bounding_box);
