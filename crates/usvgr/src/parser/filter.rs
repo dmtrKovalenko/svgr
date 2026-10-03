@@ -853,6 +853,7 @@ fn convert_image(fe: SvgNode, state: &converter::State, cache: &mut converter::C
                         Node::Path(ref mut path) => path.id.clear(),
                         Node::Image(ref mut image) => image.id.clear(),
                         Node::Text(ref mut text) => text.id.clear(),
+                        Node::FastShape(ref mut shape) => shape.path.id.clear(),
                     }
                 }
             }

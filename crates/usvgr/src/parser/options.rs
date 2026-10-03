@@ -56,6 +56,11 @@ pub struct Options<'a> {
     /// Default: GeometricPrecision
     pub shape_rendering: ShapeRendering,
 
+    /// Keeps some of the gpu accellerated path shapes used by other fframes from svgr fframes renderers.
+    ///
+    /// Default: false
+    pub fast_shapes: bool,
+
     /// Specifies the default text rendering method.
     ///
     /// Will be used when an SVG element's `text-rendering` property is set to `auto`.
@@ -95,6 +100,7 @@ impl Default for Options<'_> {
             font_size: 12.0,
             languages: vec!["en".to_string()],
             shape_rendering: ShapeRendering::default(),
+            fast_shapes: false,
             text_rendering: TextRendering::default(),
             image_rendering: ImageRendering::default(),
             default_size: Size::from_wh(100.0, 100.0).unwrap(),

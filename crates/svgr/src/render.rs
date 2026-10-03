@@ -92,6 +92,21 @@ pub fn render_node(
                 pixmap_pool,
             );
         }
+        // Only produced with `usvgr::Options::fast_shapes`, which renderers that draw shapes
+        // natively enable; the outline is built here on demand.
+        usvgr::Node::FastShape(ref shape) => {
+            if let Some(path) = shape.to_path() {
+                crate::path::render(
+                    &path,
+                    tiny_skia::BlendMode::SourceOver,
+                    ctx,
+                    transform,
+                    pixmap,
+                    cache,
+                    pixmap_pool,
+                );
+            }
+        }
         usvgr::Node::Image(ref image) => {
             crate::image::render(image, transform, pixmap, cache, pixmap_pool);
         }

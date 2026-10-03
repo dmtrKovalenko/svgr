@@ -654,6 +654,11 @@ fn write_element(node: &Node, is_clip_path: bool, opt: &WriteOptions, xml: &mut 
         Node::Path(ref p) => {
             write_path(p, is_clip_path, Transform::default(), None, opt, xml);
         }
+        Node::FastShape(ref e) => {
+            if let Some(path) = e.to_path() {
+                write_path(&path, is_clip_path, Transform::default(), None, opt, xml);
+            }
+        }
         Node::Image(ref img) => {
             xml.start_svg_element(EId::Image);
             if !img.id.is_empty() {
