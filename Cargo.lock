@@ -1303,6 +1303,7 @@ dependencies = [
 name = "svgr"
 version = "0.46.1"
 dependencies = [
+ "bytemuck",
  "criterion",
  "gif",
  "image",

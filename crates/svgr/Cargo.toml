@@ -15,6 +15,7 @@ workspace = "../.."
 # required-features = ["text", "system-fonts", "memmap-fonts"]
 
 [dependencies]
+bytemuck = "1.14"
 gif = { version = "0.13", optional = true }
 jpeg-decoder = { version = "0.3", default-features = false, features = ["platform_independent"], optional = true }
 log = "0.4"
