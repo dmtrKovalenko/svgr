@@ -6,14 +6,193 @@ use std::cell::RefCell;
 use std::hash::{BuildHasher, Hash, Hasher};
 use std::num::NonZeroUsize;
 
+use fontdb::{Database, ID};
+use svgrtypes::FontFamily;
+
+use self::layout::DatabaseExt;
 use crate::tree::FastTransform;
-use crate::Text;
+use crate::{Font, FontStretch, FontStyle, Text};
 
 mod colr;
 mod flatten;
 
 /// Provides access to the layout of a text node.
 pub mod layout;
+
+/// A shorthand for [FontResolver]'s font selection function.
+///
+/// This function receives a font specification (families + a style, weight,
+/// stretch triple) and a font database and should return the ID of the font
+/// that shall be used (if any).
+///
+/// In the basic case, the function will search the existing fonts in the
+/// database to find a good match, e.g. via
+/// [`Database::query`](fontdb::Database::query). This is what the [default
+/// implementation](FontResolver::default_font_selector) does.
+///
+/// Unlike upstream resvg, the database is passed by shared reference: fonts
+/// cannot be loaded dynamically during parsing and must be added to the
+/// database passed to `Tree::from_*` upfront.
+pub type FontSelectionFn<'a> = Box<dyn Fn(&Font, &Database) -> Option<ID> + Send + Sync + 'a>;
+
+/// A shorthand for [FontResolver]'s fallback selection function.
+///
+/// This function receives a specific character, a list of already used fonts,
+/// and a font database. It should return the ID of a font that
+/// - is not any of the already used fonts
+/// - is as close as possible to the first already used font (if any)
+/// - supports the given character
+pub type FallbackSelectionFn<'a> =
+    Box<dyn Fn(char, &[ID], &Database) -> Option<ID> + Send + Sync + 'a>;
+
+/// A font resolver for `<text>` elements.
+///
+/// This type can be useful if you want to have an alternative font handling to
+/// the default one. By default, fonts are selected from the font database via
+/// [`Database::query`](fontdb::Database::query), and fallback fonts by searching
+/// the whole database for a face supporting the missing character.
+///
+/// Note on caching: the text outline cache (see `Cache::new_with_text_cache`)
+/// keys converted text only by the `Text` node itself. Like the font database,
+/// the font resolver is assumed to stay the same for the lifetime of a cache.
+/// If you use a resolver that can pick different fonts for the same text
+/// (or switch resolvers), use a separate cache for it.
+pub struct FontResolver<'a> {
+    /// Resolver function that will be used when selecting a specific font
+    /// for a generic [`Font`] specification.
+    pub select_font: FontSelectionFn<'a>,
+
+    /// Resolver function that will be used when selecting a fallback font for a
+    /// character.
+    pub select_fallback: FallbackSelectionFn<'a>,
+}
+
+impl Default for FontResolver<'_> {
+    fn default() -> Self {
+        FontResolver {
+            select_font: FontResolver::default_font_selector(),
+            select_fallback: FontResolver::default_fallback_selector(),
+        }
+    }
+}
+
+impl FontResolver<'_> {
+    /// Creates a default font selection resolver.
+    ///
+    /// The default implementation forwards to
+    /// [`query`](fontdb::Database::query) on the font database.
+    pub fn default_font_selector() -> FontSelectionFn<'static> {
+        Box::new(move |font, fontdb| {
+            let mut name_list = Vec::new();
+            for family in &font.families {
+                name_list.push(match family {
+                    FontFamily::Serif => fontdb::Family::Serif,
+                    FontFamily::SansSerif => fontdb::Family::SansSerif,
+                    FontFamily::Cursive => fontdb::Family::Cursive,
+                    FontFamily::Fantasy => fontdb::Family::Fantasy,
+                    FontFamily::Monospace => fontdb::Family::Monospace,
+                    FontFamily::Named(s) => fontdb::Family::Name(s),
+                });
+            }
+
+            // Use the default font as fallback.
+            name_list.push(fontdb::Family::Serif);
+
+            let stretch = match font.stretch {
+                FontStretch::UltraCondensed => fontdb::Stretch::UltraCondensed,
+                FontStretch::ExtraCondensed => fontdb::Stretch::ExtraCondensed,
+                FontStretch::Condensed => fontdb::Stretch::Condensed,
+                FontStretch::SemiCondensed => fontdb::Stretch::SemiCondensed,
+                FontStretch::Normal => fontdb::Stretch::Normal,
+                FontStretch::SemiExpanded => fontdb::Stretch::SemiExpanded,
+                FontStretch::Expanded => fontdb::Stretch::Expanded,
+                FontStretch::ExtraExpanded => fontdb::Stretch::ExtraExpanded,
+                FontStretch::UltraExpanded => fontdb::Stretch::UltraExpanded,
+            };
+
+            let style = match font.style {
+                FontStyle::Normal => fontdb::Style::Normal,
+                FontStyle::Italic => fontdb::Style::Italic,
+                FontStyle::Oblique => fontdb::Style::Oblique,
+            };
+
+            let query = fontdb::Query {
+                families: &name_list,
+                weight: fontdb::Weight(font.weight),
+                stretch,
+                style,
+            };
+
+            let id = fontdb.query(&query);
+            if id.is_none() {
+                log::warn!(
+                    "No match for '{}' font-family.",
+                    font.families
+                        .iter()
+                        .map(|f| f.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
+
+            id
+        })
+    }
+
+    /// Creates a default font fallback selection resolver.
+    ///
+    /// The default implementation searches through the entire `fontdb`
+    /// to find a font that has the correct style and supports the character.
+    pub fn default_fallback_selector() -> FallbackSelectionFn<'static> {
+        Box::new(|c, exclude_fonts, fontdb| {
+            let base_font_id = exclude_fonts[0];
+
+            // Iterate over fonts and check if any of them support the specified char.
+            for face in fontdb.faces() {
+                // Ignore fonts, that were used for shaping already.
+                if exclude_fonts.contains(&face.id) {
+                    continue;
+                }
+
+                // Check that the new face has the same style.
+                let base_face = fontdb.face(base_font_id)?;
+                if base_face.style != face.style
+                    && base_face.weight != face.weight
+                    && base_face.stretch != face.stretch
+                {
+                    continue;
+                }
+
+                if !fontdb.has_char(face.id, c) {
+                    continue;
+                }
+
+                let base_family = base_face
+                    .families
+                    .iter()
+                    .find(|f| f.1 == fontdb::Language::English_UnitedStates)
+                    .unwrap_or(&base_face.families[0]);
+
+                let new_family = face
+                    .families
+                    .iter()
+                    .find(|f| f.1 == fontdb::Language::English_UnitedStates)
+                    .unwrap_or(&base_face.families[0]);
+
+                log::warn!("Fallback from {} to {}.", base_family.0, new_family.0);
+                return Some(face.id);
+            }
+
+            None
+        })
+    }
+}
+
+impl std::fmt::Debug for FontResolver<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("FontResolver { .. }")
+    }
+}
 
 /// Text outline and layoute cache
 #[derive(Debug)]
@@ -39,6 +218,7 @@ impl UsvgrTextOutlineCache {
 
 pub(crate) fn convert_with_cache(
     text: Text,
+    resolver: &FontResolver,
     fontdb: &fontdb::Database,
     cache: Option<&UsvgrTextOutlineCache>,
 ) -> Option<Text> {
@@ -53,13 +233,13 @@ pub(crate) fn convert_with_cache(
 
             cache
                 .borrow_mut()
-                .get_or_insert(hash, || convert(text, fontdb))
+                .get_or_insert(hash, || convert(text, resolver, fontdb))
                 // TODO figure out if we can avoid cloning here
                 // it is pretty expensive but in order to convert his to Rc
                 // it needs to remove all the mutabalities around flattened
                 .clone()
         }
-        None => convert(text, fontdb),
+        None => convert(text, resolver, fontdb),
     }
 }
 
@@ -68,8 +248,12 @@ pub(crate) fn convert_with_cache(
 /// SVG specifiation. While doing so, we also calculate the text bbox (which is not based on the
 /// outlines of a glyph, but instead the glyph metrics as well as decoration spans).
 /// 2. We convert all of the positioned glyphs into outlines.
-pub(crate) fn convert(mut text: Text, fontdb: &fontdb::Database) -> Option<Text> {
-    let (text_fragments, bbox) = layout::layout_text(&text, fontdb)?;
+pub(crate) fn convert(
+    mut text: Text,
+    resolver: &FontResolver,
+    fontdb: &fontdb::Database,
+) -> Option<Text> {
+    let (text_fragments, bbox) = layout::layout_text(&text, resolver, fontdb)?;
     text.layouted = text_fragments;
     text.bounding_box = bbox.to_rect();
     text.abs_bounding_box = bbox.fast_transform(text.abs_transform)?.to_rect();

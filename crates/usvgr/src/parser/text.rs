@@ -146,6 +146,7 @@ pub(crate) fn convert(
 
     if let Some(text) = crate::text::convert_with_cache(
         text,
+        &state.opt.font_resolver,
         state.fontdb,
         cache.usvgr_text_cache.as_ref(),
     ) {

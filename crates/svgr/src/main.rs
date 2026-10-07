@@ -560,6 +560,7 @@ fn parse_args() -> Result<Args, String> {
         default_size,
         image_data: None,
         sub_svg_data: None,
+        ..usvgr::Options::default()
     };
 
     Ok(Args {

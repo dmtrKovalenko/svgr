@@ -7,6 +7,8 @@ use std::{collections::HashMap, sync::Arc};
 use crate::{ImageRendering, ShapeRendering, Size, TextRendering, Tree};
 
 use super::image::PreloadedImageData;
+#[cfg(feature = "text")]
+use crate::FontResolver;
 
 /// Processing options.
 #[derive(Debug)]
@@ -88,6 +90,16 @@ pub struct Options<'a> {
     /// FFRAMES requirement
     /// Preloaded decoded SVG data
     pub sub_svg_data: Option<&'a HashMap<String, Arc<Tree>>>,
+
+    /// Specifies how fonts should be resolved.
+    ///
+    /// Fonts are always taken from the font database passed to `Tree::from_*`,
+    /// dynamic font loading is not supported. The resolver is `'static` so that
+    /// adding it does not tie the drop of `Options` to the `'a` borrows.
+    ///
+    /// Default: see type's documentation for details
+    #[cfg(feature = "text")]
+    pub font_resolver: FontResolver<'static>,
 }
 
 impl Default for Options<'_> {
@@ -106,6 +118,8 @@ impl Default for Options<'_> {
             default_size: Size::from_wh(100.0, 100.0).unwrap(),
             image_data: None,
             sub_svg_data: None,
+            #[cfg(feature = "text")]
+            font_resolver: FontResolver::default(),
         }
     }
 }

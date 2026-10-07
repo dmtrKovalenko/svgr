@@ -365,3 +365,39 @@ fn path_transform_in_svg() {
         usvgr::Transform::from_translate(100.0, 150.0)
     );
 }
+
+#[test]
+fn custom_font_resolver() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let svg = "
+    <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>
+        <text x='10' y='50' font-family='Noto Sans'>Text</text>
+    </svg>
+    ";
+
+    let mut fontdb = usvgr::fontdb::Database::new();
+    fontdb.load_fonts_dir("../svgr/tests/fonts");
+
+    // The default resolver finds the font.
+    let tree = usvgr::Tree::from_str(&svg, &usvgr::Options::default(), &fontdb).unwrap();
+    assert!(tree.root().has_children());
+
+    // A resolver that never selects a font produces no text.
+    let calls = Arc::new(AtomicUsize::new(0));
+    let calls2 = calls.clone();
+    let opt = usvgr::Options {
+        font_resolver: usvgr::FontResolver {
+            select_font: Box::new(move |_, _| {
+                calls2.fetch_add(1, Ordering::SeqCst);
+                None
+            }),
+            select_fallback: usvgr::FontResolver::default_fallback_selector(),
+        },
+        ..usvgr::Options::default()
+    };
+    let tree = usvgr::Tree::from_str(&svg, &opt, &fontdb).unwrap();
+    assert!(calls.load(Ordering::SeqCst) > 0);
+    assert!(!tree.root().has_children());
+}
