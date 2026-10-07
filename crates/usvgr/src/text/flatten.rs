@@ -30,6 +30,7 @@ fn push_outline_paths(
     builder: &mut tiny_skia_path::PathBuilder,
     new_children: &mut Vec<Node>,
     rendering_mode: ShapeRendering,
+    abs_transform: Transform,
 ) {
     let builder = mem::replace(builder, tiny_skia_path::PathBuilder::new());
 
@@ -42,7 +43,7 @@ fn push_outline_paths(
             span.paint_order,
             rendering_mode,
             Arc::new(p),
-            Transform::default(),
+            abs_transform,
             None, // static_hash - text paths are dynamic
         )
     }) {
@@ -101,6 +102,7 @@ pub(crate) fn flatten(
 ) -> Option<(Group, NonZeroRect)> {
     let mut new_children = vec![];
 
+    let abs_transform = text.abs_transform;
     let rendering_mode = resolve_rendering_mode(text);
 
     for span in &text.layouted {
@@ -134,13 +136,20 @@ pub(crate) fn flatten(
             match glyph_cache.glyph(fontdb, glyph.font, glyph.id) {
                 // A (best-effort conversion of a) COLR glyph.
                 Some(ResolvedGlyph::Colr(tree)) => {
-                    push_outline_paths(span, &mut span_builder, &mut new_children, rendering_mode);
+                    push_outline_paths(
+                        span,
+                        &mut span_builder,
+                        &mut new_children,
+                        rendering_mode,
+                        abs_transform,
+                    );
 
                     let mut group = Group {
                         transform: glyph.colr_transform(),
                         ..Group::empty()
                     };
-                    // TODO: Probably need to update abs_transform of children?
+                    // TODO: Probably need to update abs_transform of children? Same
+                    // for SVG and bitmap glyphs.
                     group.children.push(Node::Group(Box::new(tree.root)));
                     group.calculate_bounding_boxes();
 
@@ -148,13 +157,18 @@ pub(crate) fn flatten(
                 }
                 // An SVG glyph. Will return the usvgr node containing the glyph descriptions.
                 Some(ResolvedGlyph::Svg(node)) => {
-                    push_outline_paths(span, &mut span_builder, &mut new_children, rendering_mode);
+                    push_outline_paths(
+                        span,
+                        &mut span_builder,
+                        &mut new_children,
+                        rendering_mode,
+                        abs_transform,
+                    );
 
                     let mut group = Group {
                         transform: glyph.svg_transform(),
                         ..Group::empty()
                     };
-                    // TODO: Probably need to update abs_transform of children?
                     group.children.push(node);
                     group.calculate_bounding_boxes();
 
@@ -162,7 +176,13 @@ pub(crate) fn flatten(
                 }
                 // A bitmap glyph.
                 Some(ResolvedGlyph::Raster(img)) => {
-                    push_outline_paths(span, &mut span_builder, &mut new_children, rendering_mode);
+                    push_outline_paths(
+                        span,
+                        &mut span_builder,
+                        &mut new_children,
+                        rendering_mode,
+                        abs_transform,
+                    );
 
                     let transform = if img.is_sbix {
                         glyph.sbix_transform(
@@ -224,7 +244,13 @@ pub(crate) fn flatten(
             }
         }
 
-        push_outline_paths(span, &mut span_builder, &mut new_children, rendering_mode);
+        push_outline_paths(
+            span,
+            &mut span_builder,
+            &mut new_children,
+            rendering_mode,
+            abs_transform,
+        );
 
         if let Some(path) = span.line_through.as_ref() {
             let mut path = path.clone();

@@ -567,3 +567,47 @@ fn no_text_nodes() {
     let tree = usvgr::Tree::from_str(&svg, &usvgr::Options::default(), &fontdb).unwrap();
     assert!(!tree.has_text_nodes());
 }
+
+#[test]
+fn flattened_text_should_inherit_absolute_transform() {
+    let svg = "
+    <svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>
+        <g transform='translate(20 20)'>
+            <g transform='translate(20 20)'>
+                <text x='32' y='100'>Text</text>
+            </g>
+        </g>
+    </svg>
+    ";
+
+    let mut fontdb = usvgr::fontdb::Database::new();
+    fontdb.load_fonts_dir(env!("CARGO_MANIFEST_DIR").to_string() + "/../svgr/tests/fonts");
+    let mut opts = usvgr::Options::default();
+    opts.font_family = "Noto Sans".to_string();
+
+    let tree = usvgr::Tree::from_str(&svg, &opts, &fontdb).unwrap();
+
+    let usvgr::Node::Group(group0) = &tree.root().children()[0] else {
+        unreachable!()
+    };
+    let usvgr::Node::Group(group1) = &group0.children()[0] else {
+        unreachable!()
+    };
+    let usvgr::Node::Text(text) = &group1.children()[0] else {
+        unreachable!()
+    };
+    let usvgr::Node::Path(path) = &text.flattened().children()[0] else {
+        unreachable!()
+    };
+
+    let t = path.abs_transform();
+
+    assert_eq!(t.tx, 40.0);
+    assert_eq!(t.ty, 40.0);
+
+    assert_ne!(path.bounding_box(), path.abs_bounding_box());
+    assert_eq!(
+        path.bounding_box().transform(t).unwrap(),
+        path.abs_bounding_box()
+    );
+}
