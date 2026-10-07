@@ -23,7 +23,18 @@ const XML_NAMESPACE_NS: &str = "http://www.w3.org/XML/1998/namespace";
 impl<'input> Document<'input> {
     /// Parses a [`Document`] from a [`roxmltree::Document`].
     pub fn parse_tree(xml: &roxmltree::Document<'input>) -> Result<Document<'input>, Error> {
-        parse(xml)
+        parse(xml, None)
+    }
+
+    /// Parses a [`Document`] from a [`roxmltree::Document`] with an optional
+    /// injected CSS style sheet.
+    ///
+    /// Injected style sheets do not override the document's own style sheets.
+    pub fn parse_tree_with_style_sheet(
+        xml: &roxmltree::Document<'input>,
+        injected_stylesheet: Option<&'input str>,
+    ) -> Result<Document<'input>, Error> {
+        parse(xml, injected_stylesheet)
     }
 
     pub(crate) fn append(&mut self, parent_id: NodeId, kind: NodeKind) -> NodeId {
@@ -70,7 +81,10 @@ impl<'input> Document<'input> {
     }
 }
 
-fn parse<'input>(xml: &roxmltree::Document<'input>) -> Result<Document<'input>, Error> {
+fn parse<'input>(
+    xml: &roxmltree::Document<'input>,
+    injected_stylesheet: Option<&'input str>,
+) -> Result<Document<'input>, Error> {
     let mut doc = Document {
         nodes: Vec::new(),
         attrs: Vec::new(),
@@ -96,7 +110,7 @@ fn parse<'input>(xml: &roxmltree::Document<'input>) -> Result<Document<'input>, 
         static_hash: None,
     });
 
-    let style_sheet = resolve_css(xml);
+    let style_sheet = resolve_css(xml, injected_stylesheet);
 
     parse_xml_node_children(
         xml.root(),
@@ -585,8 +599,17 @@ fn parse_svg_use_element<'input>(
     )
 }
 
-fn resolve_css<'a>(xml: &'a roxmltree::Document<'a>) -> simplecss::StyleSheet<'a> {
+fn resolve_css<'a>(
+    xml: &'a roxmltree::Document<'a>,
+    style_sheet: Option<&'a str>,
+) -> simplecss::StyleSheet<'a> {
     let mut sheet = simplecss::StyleSheet::new();
+
+    // Injected style sheets do not override internal ones (we mimic the logic of rsvg-convert),
+    // so we need to parse it first.
+    if let Some(style_sheet) = style_sheet {
+        sheet.parse_more(style_sheet);
+    }
 
     for node in xml.descendants().filter(|n| n.has_tag_name("style")) {
         match node.attribute("type") {

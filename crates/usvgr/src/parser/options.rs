@@ -100,6 +100,16 @@ pub struct Options<'a> {
     /// Default: see type's documentation for details
     #[cfg(feature = "text")]
     pub font_resolver: FontResolver<'static>,
+
+    /// A CSS stylesheet that should be injected into the SVG. Can be used to overwrite
+    /// certain attributes.
+    ///
+    /// Only applies to SVGs parsed from XML (`Tree::from_str`/`from_data`/`from_xmltree*`).
+    /// Trees built from a pre-parsed nested svgtree (`Tree::from_nested_svgtree*`,
+    /// e.g. compile-time trees from `svgr-macro`) are not affected.
+    ///
+    /// Default: `None`
+    pub style_sheet: Option<String>,
 }
 
 impl Default for Options<'_> {
@@ -120,6 +130,7 @@ impl Default for Options<'_> {
             sub_svg_data: None,
             #[cfg(feature = "text")]
             font_resolver: FontResolver::default(),
+            style_sheet: None,
         }
     }
 }

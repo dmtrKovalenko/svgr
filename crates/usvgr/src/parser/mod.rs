@@ -152,7 +152,7 @@ impl crate::Tree {
         cache: &mut Cache,
         #[cfg(feature = "text")] fontdb: &fontdb::Database,
     ) -> Result<Self, Error> {
-        let doc = svgtree::Document::parse_tree(doc)?;
+        let doc = svgtree::Document::parse_tree_with_style_sheet(doc, opt.style_sheet.as_deref())?;
         self::converter::convert_doc(
             &doc,
             opt,
@@ -168,7 +168,7 @@ impl crate::Tree {
         opt: &Options,
         #[cfg(feature = "text")] fontdb: &fontdb::Database,
     ) -> Result<Self, Error> {
-        let doc = svgtree::Document::parse_tree(doc)?;
+        let doc = svgtree::Document::parse_tree_with_style_sheet(doc, opt.style_sheet.as_deref())?;
         self::converter::convert_doc(
             &doc,
             opt,
