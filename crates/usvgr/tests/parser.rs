@@ -685,3 +685,20 @@ fn use_node_abs_transform() {
         usvgr::Rect::from_xywh(20.0, 30.0, 50.0, 50.0).unwrap()
     );
 }
+
+#[test]
+fn nested_svg_abs_bounding_box() {
+    let svg = "
+    <svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'>
+        <svg transform='translate(10, 20)' width='50' height='50'>
+            <path id='path' d='M 0 0 L 10 10'/>
+        </svg>
+    </svg>
+    ";
+    let fontdb = usvgr::fontdb::Database::new();
+    let tree = usvgr::Tree::from_str(&svg, &usvgr::Options::default(), &fontdb).unwrap();
+    assert_eq!(
+        tree.node_by_id("path").unwrap().abs_bounding_box(),
+        usvgr::Rect::from_xywh(10.0, 20.0, 10.0, 10.0).unwrap()
+    );
+}
