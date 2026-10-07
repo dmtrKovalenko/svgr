@@ -628,9 +628,48 @@ impl<'a, 'input: 'a> SvgNode<'a, 'input> {
 
     /// Returns the pre-computed static hash for this node, if any.
     /// This is set at compile-time by svgr-macro for fully static nodes.
+    ///
+    /// Inherited attributes that svgr-macro does not mix into the static hash
+    /// (`font-variation-settings` and `font-optical-sizing`, added after the
+    /// macro's list of inheritable attributes was written) are resolved here and
+    /// mixed in, so the same static subtree under different values of them gets
+    /// different cache keys instead of returning stale renders.
     #[inline]
     pub fn static_hash(&self) -> Option<u64> {
-        self.d.static_hash
+        let hash = self.d.static_hash?;
+        Some(self.mix_unhashed_inherited_attributes(hash))
+    }
+
+    fn mix_unhashed_inherited_attributes(&self, hash: u64) -> u64 {
+        use std::hash::{Hash, Hasher};
+
+        const AIDS: [AId; 2] = [AId::FontVariationSettings, AId::FontOpticalSizing];
+
+        let mut found: [Option<&str>; 2] = [None, None];
+        for n in self.ancestors() {
+            for (aid, value) in AIDS.iter().zip(found.iter_mut()) {
+                if value.is_none() && n.has_attribute(*aid) {
+                    *value = Some(n.attribute::<&str>(*aid).unwrap_or(""));
+                }
+            }
+            if found.iter().all(Option::is_some) {
+                break;
+            }
+        }
+
+        if found.iter().all(Option::is_none) {
+            return hash;
+        }
+
+        let mut hasher = siphasher::sip::SipHasher13::new();
+        hash.hash(&mut hasher);
+        for (aid, value) in AIDS.iter().zip(found.iter()) {
+            if let Some(value) = value {
+                (*aid as u16).hash(&mut hasher);
+                value.hash(&mut hasher);
+            }
+        }
+        hasher.finish()
     }
 
     /// Checks if the current node is an element.
@@ -1537,5 +1576,79 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for SvgNode<'a, 'input> {
             svgrtypes::FuncIRI::from_str(s).ok().map(|v| v.0)?
         };
         node.document().element_by_id(id)
+    }
+}
+
+#[cfg(test)]
+mod static_hash_tests {
+    use super::*;
+
+    fn attr(name: AId, value: &'static str) -> Attribute<'static> {
+        Attribute {
+            name,
+            value: SvgAttributeValue::StringStorage(StringStorage::Borrowed(value)),
+        }
+    }
+
+    fn element(
+        tag_name: EId,
+        attrs: Vec<Attribute<'static>>,
+        children: Vec<NestedNodeData<'static>>,
+        static_hash: Option<u64>,
+    ) -> NestedNodeData<'static> {
+        NestedNodeData {
+            kind: NestedNodeKind::Element { tag_name },
+            attrs: attrs.into_boxed_slice(),
+            children: children.into_iter().map(Some).collect(),
+            static_hash,
+        }
+    }
+
+    /// Returns the static hashes of the two `text` elements, each placed in a
+    /// group with the given attributes.
+    fn text_hashes(a: Vec<Attribute<'static>>, b: Vec<Attribute<'static>>) -> (u64, u64) {
+        // Same compile-time hash for both texts, like svgr-macro would produce.
+        let text = || element(EId::Text, vec![attr(AId::Id, "t")], vec![], Some(42));
+        let svg = element(
+            EId::Svg,
+            vec![],
+            vec![
+                element(EId::G, a, vec![text()], None),
+                element(EId::G, b, vec![text()], None),
+            ],
+            None,
+        );
+        let nested = NestedSvgDocument::from_nodes(vec![Some(svg)]);
+        let doc = Document::try_from(&nested).unwrap();
+        let hashes: Vec<u64> = doc
+            .descendants()
+            .filter(|n| n.tag_name() == Some(EId::Text))
+            .map(|n| n.static_hash().unwrap())
+            .collect();
+        (hashes[0], hashes[1])
+    }
+
+    #[test]
+    fn static_hash_unchanged_without_unhashed_attributes() {
+        let (a, b) = text_hashes(vec![], vec![attr(AId::Fill, "red")]);
+        assert_eq!(a, 42);
+        assert_eq!(b, 42);
+    }
+
+    #[test]
+    fn static_hash_includes_inherited_font_variation_settings() {
+        let (a, b) = text_hashes(
+            vec![attr(AId::FontVariationSettings, "'wght' 700")],
+            vec![attr(AId::FontVariationSettings, "'wght' 300")],
+        );
+        assert_ne!(a, b);
+        assert_ne!(a, 42);
+    }
+
+    #[test]
+    fn static_hash_includes_inherited_font_optical_sizing() {
+        let (a, b) = text_hashes(vec![attr(AId::FontOpticalSizing, "none")], vec![]);
+        assert_ne!(a, b);
+        assert_eq!(b, 42);
     }
 }
