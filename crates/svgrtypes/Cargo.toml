@@ -13,6 +13,6 @@ repository = "https://github.com/dmtrKovalenko/svgrtypes"
 
 [dependencies]
 siphasher = "1.0"
-kurbo = "0.12"
+kurbo = "0.13"
 quote = "1"
 proc-macro2 = "1"
