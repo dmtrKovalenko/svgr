@@ -1059,6 +1059,7 @@ impl AId {
             self,
             AId::AlignmentBaseline
                 | AId::BaselineShift
+                | AId::BackgroundColor // non-standard SVG attribute
                 | AId::ClipPath
                 | AId::ClipRule
                 | AId::Color
@@ -1192,6 +1193,7 @@ fn is_non_inheritable(id: AId) -> bool {
         id,
         AId::AlignmentBaseline
             | AId::BaselineShift
+            | AId::BackgroundColor
             | AId::ClipPath
             | AId::Display
             | AId::DominantBaseline

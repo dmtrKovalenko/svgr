@@ -302,6 +302,11 @@ pub(crate) fn convert_doc(
         aspect: svg.attribute(AId::PreserveAspectRatio).unwrap_or_default(),
     };
 
+    // Non-standard `background-color` attribute on the root `svg` element.
+    // Compile-time svgtrees (svgr-macro) may store it pre-parsed as a color,
+    // which the `svgrtypes::Color` value parser handles as well.
+    let background_color = svg.attribute::<svgrtypes::Color>(AId::BackgroundColor);
+
     let mut tree = Tree {
         size,
         view_box,
@@ -349,6 +354,14 @@ pub(crate) fn convert_doc(
         }
     }
 
+    // The background is drawn in the user space (the view box is applied by the
+    // renderer), so it has to cover the whole view box.
+    if let Some(background_color) = background_color {
+        if let Some(path) = background_path(background_color, view_box.rect.to_rect()) {
+            tree.root.children.push(Node::Path(Box::new(path)));
+        }
+    }
+
     convert_children(svg_doc.root(), &state, cache, &mut tree.root);
     cache.clear();
 
@@ -370,6 +383,32 @@ pub(crate) fn convert_doc(
     }
 
     Ok(tree)
+}
+
+fn background_path(background_color: svgrtypes::Color, area: Rect) -> Option<Path> {
+    let path = tiny_skia_path::PathBuilder::from_rect(area);
+
+    let fill = Fill {
+        paint: Paint::Color(Color::new_rgb(
+            background_color.red,
+            background_color.green,
+            background_color.blue,
+        )),
+        opacity: Opacity::new(background_color.alpha as f32 / 255.0)?,
+        ..Default::default()
+    };
+
+    Path::new(
+        String::new(),
+        Visibility::Visible,
+        Some(fill),
+        None,
+        PaintOrder::FillAndStroke,
+        ShapeRendering::default(),
+        Arc::new(path),
+        Transform::default(),
+        None,
+    )
 }
 
 fn resolve_svg_size(

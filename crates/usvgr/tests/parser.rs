@@ -463,3 +463,19 @@ fn custom_font_resolver() {
     assert!(calls.load(Ordering::SeqCst) > 0);
     assert!(!tree.root().has_children());
 }
+
+#[test]
+fn svgtree_names_roundtrip() {
+    // Guards the generated perfect-hash maps in svgtree/names.rs.
+    let attributes = std::fs::read_to_string("codegen/attributes.txt").unwrap();
+    for name in attributes.lines().filter(|s| !s.is_empty()) {
+        let aid = usvgr::svgtree::AId::from_str(name).expect(name);
+        assert_eq!(aid.to_str(), name);
+    }
+
+    let elements = std::fs::read_to_string("codegen/elements.txt").unwrap();
+    for name in elements.lines().filter(|s| !s.is_empty()) {
+        let eid = usvgr::svgtree::EId::from_str(name).expect(name);
+        assert_eq!(eid.to_str(), name);
+    }
+}
