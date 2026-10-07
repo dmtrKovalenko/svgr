@@ -12,6 +12,7 @@ use svgrtypes::AspectRatio;
 use tiny_skia_path::{NonZeroRect, Transform};
 use xmlwriter::XmlWriter;
 
+use crate::parser::OptionLog;
 use crate::text::colr::GlyphPainter;
 use crate::*;
 
@@ -92,8 +93,8 @@ pub(crate) fn flatten(text: &mut Text, fontdb: &fontdb::Database) -> Option<(Gro
 
                     new_children.push(Node::Group(Box::new(group)));
                 }
-                // An SVG glyph. Will return the usvgr tree containing the glyph descriptions.
-                Some(ResolvedGlyph::Svg(tree)) => {
+                // An SVG glyph. Will return the usvgr node containing the glyph descriptions.
+                Some(ResolvedGlyph::Svg(node)) => {
                     push_outline_paths(span, &mut span_builder, &mut new_children, rendering_mode);
 
                     let mut group = Group {
@@ -101,7 +102,7 @@ pub(crate) fn flatten(text: &mut Text, fontdb: &fontdb::Database) -> Option<(Gro
                         ..Group::empty()
                     };
                     // TODO: Probably need to update abs_transform of children?
-                    group.children.push(Node::Group(Box::new(tree.root)));
+                    group.children.push(node);
                     group.calculate_bounding_boxes();
 
                     new_children.push(Node::Group(Box::new(group)));
@@ -205,7 +206,7 @@ pub(crate) enum ResolvedGlyph {
     /// A (best-effort conversion of a) COLR glyph.
     Colr(Tree),
     /// An SVG glyph.
-    Svg(Tree),
+    Svg(Node),
     /// A bitmap (`sbix`/`CBDT`) glyph.
     Raster(BitmapImage),
     /// A plain outline glyph (`glyf`, `CFF`, `CFF2`).
@@ -236,8 +237,8 @@ impl DatabaseExt for Database {
             }
 
             if tables.svg.is_some() {
-                if let Some(tree) = svg(&font, glyph_id) {
-                    return Some(ResolvedGlyph::Svg(tree));
+                if let Some(node) = svg(&font, glyph_id) {
+                    return Some(ResolvedGlyph::Svg(node));
                 }
             }
 
@@ -303,12 +304,28 @@ fn raster(font: &ttf_parser::Face, glyph_id: GlyphId) -> Option<BitmapImage> {
     None
 }
 
-fn svg(font: &ttf_parser::Face, glyph_id: GlyphId) -> Option<Tree> {
+fn svg(font: &ttf_parser::Face, glyph_id: GlyphId) -> Option<Node> {
     // TODO: Technically not 100% accurate because the SVG format in a OTF font
     // is actually a subset/superset of a normal SVG, but it seems to work fine
     // for Twitter Color Emoji, so might as well use what we already have.
+
+    // TODO: Glyph records can contain the data for multiple glyphs. We should
+    // add a cache so we don't need to reparse the data every time.
     let image = font.glyph_svg_image(glyph_id)?;
-    Tree::from_data(image.data, &Options::default(), &fontdb::Database::new()).ok()
+    let tree = Tree::from_data(image.data, &Options::default(), &fontdb::Database::new()).ok()?;
+
+    // Twitter Color Emoji seems to always have one SVG record per glyph,
+    // while Noto Color Emoji sometimes contains multiple ones. It's kind of hacky,
+    // but the best we have for now.
+    let node = if image.start_glyph_id == image.end_glyph_id {
+        Node::Group(Box::new(tree.root))
+    } else {
+        tree.node_by_id(&format!("glyph{}", glyph_id.0))
+            .log_none(|| log::warn!("Failed to find SVG glyph node for glyph {}", glyph_id.0))
+            .cloned()?
+    };
+
+    Some(node)
 }
 
 fn colr(face: &ttf_parser::Face, glyph_id: GlyphId) -> Option<Tree> {
