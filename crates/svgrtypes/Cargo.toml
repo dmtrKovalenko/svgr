@@ -12,7 +12,7 @@ readme = "README.md"
 repository = "https://github.com/dmtrKovalenko/svgrtypes"
 
 [dependencies]
-siphasher = "0.3"
-kurbo = "0.8"
+siphasher = "1.0"
+kurbo = "0.11"
 quote = "1"
 proc-macro2 = "1"
