@@ -1458,7 +1458,7 @@ fn shape_text_with_font(
             let mut features = Vec::new();
             if small_caps {
                 features.push(rustybuzz::Feature::new(
-                    rustybuzz::Tag::from_bytes(b"smcp"),
+                    rustybuzz::ttf_parser::Tag::from_bytes(b"smcp"),
                     1,
                     ..,
                 ));
@@ -1466,7 +1466,7 @@ fn shape_text_with_font(
 
             if !apply_kerning {
                 features.push(rustybuzz::Feature::new(
-                    rustybuzz::Tag::from_bytes(b"kern"),
+                    rustybuzz::ttf_parser::Tag::from_bytes(b"kern"),
                     0,
                     ..,
                 ));

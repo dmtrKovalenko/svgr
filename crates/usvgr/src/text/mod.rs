@@ -9,6 +9,7 @@ use std::num::NonZeroUsize;
 use crate::tree::FastTransform;
 use crate::Text;
 
+mod colr;
 mod flatten;
 
 /// Provides access to the layout of a text node.
