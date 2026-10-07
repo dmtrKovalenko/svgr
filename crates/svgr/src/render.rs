@@ -36,14 +36,7 @@ impl Context {
     /// Default implementation of the max bounding box spans 2 times the size of the pixmap
     /// in every direction around it (5 times the pixmap size in total).
     pub fn new_from_pixmap(pixmap: &tiny_skia::Pixmap) -> Self {
-        let target_size = tiny_skia::IntSize::from_wh(pixmap.width(), pixmap.height()).unwrap();
-        let max_bbox = tiny_skia::IntRect::from_xywh(
-            -(target_size.width() as i32) * 2,
-            -(target_size.height() as i32) * 2,
-            target_size.width() * 5,
-            target_size.height() * 5,
-        )
-        .unwrap();
+        let max_bbox = max_filter_bbox(pixmap.width(), pixmap.height());
 
         Self { max_bbox }
     }
@@ -55,6 +48,34 @@ impl Context {
 
         Self { max_bbox }
     }
+}
+
+/// Computes the max bounding box (2x the size in every direction), clamping
+/// instead of overflowing/panicking for huge sizes.
+fn max_filter_bbox(width: u32, height: u32) -> tiny_skia::IntRect {
+    tiny_skia::IntRect::from_xywh(
+        i32::try_from(width).unwrap_or(i32::MAX).saturating_mul(-2),
+        i32::try_from(height).unwrap_or(i32::MAX).saturating_mul(-2),
+        width.saturating_mul(5),
+        height.saturating_mul(5),
+    )
+    .unwrap_or_else(|| {
+        tiny_skia::IntRect::from_ltrb(i32::MIN / 2, i32::MIN / 2, i32::MAX / 2, i32::MAX / 2)
+            .unwrap()
+    })
+}
+
+/// Converts a filter group bounding box to an integer rect.
+///
+/// Same as `NonZeroRect::to_int_rect`, but returns `None` instead of panicking when the
+/// rect doesn't fit into `IntRect`.
+fn filter_ibbox(bbox: tiny_skia::NonZeroRect) -> Option<tiny_skia::IntRect> {
+    tiny_skia::IntRect::from_xywh(
+        bbox.x().floor() as i32,
+        bbox.y().floor() as i32,
+        bbox.width().ceil().max(1.0) as u32,
+        bbox.height().ceil().max(1.0) as u32,
+    )
 }
 
 pub fn render_nodes(
@@ -196,7 +217,7 @@ fn render_and_cache_static_group(
     let final_ibbox = if group.filters().is_empty() {
         expand_layer_bbox(final_bbox)?
     } else {
-        final_bbox.to_int_rect()
+        filter_ibbox(final_bbox)?
     };
     let final_ibbox = crate::geom::fit_to_rect(final_ibbox, ctx.max_bbox)?;
 
@@ -260,7 +281,7 @@ fn draw_cached_static_group(
     let final_ibbox = if group.filters().is_empty() {
         expand_layer_bbox(final_bbox)
     } else {
-        Some(final_bbox.to_int_rect())
+        filter_ibbox(final_bbox)
     };
     let Some(final_ibbox) = final_ibbox else {
         return;
@@ -302,7 +323,7 @@ fn render_isolated_group(
     let final_ibbox = if group.filters().is_empty() {
         expand_layer_bbox(final_bbox)?
     } else {
-        final_bbox.to_int_rect()
+        filter_ibbox(final_bbox)?
     };
     let unclipped_ibbox = final_ibbox;
     let final_ibbox = crate::geom::fit_to_rect(final_ibbox, ctx.max_bbox)?;
@@ -543,5 +564,51 @@ pub(crate) fn convert_blend_mode(mode: usvgr::BlendMode) -> tiny_skia::BlendMode
         usvgr::BlendMode::Saturation => tiny_skia::BlendMode::Saturation,
         usvgr::BlendMode::Color => tiny_skia::BlendMode::Color,
         usvgr::BlendMode::Luminosity => tiny_skia::BlendMode::Luminosity,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn max_filter_bbox_is_clamped() {
+        let bbox = super::max_filter_bbox(u32::MAX, u32::MAX);
+        assert_eq!(bbox.left(), i32::MIN / 2);
+        assert_eq!(bbox.top(), i32::MIN / 2);
+        assert_eq!(bbox.right(), i32::MAX / 2);
+        assert_eq!(bbox.bottom(), i32::MAX / 2);
+    }
+
+    // Derived from https://github.com/servo/servo/issues/42258.
+    #[test]
+    fn filter_bbox_outside_int_rect() {
+        let svg = r#"<svg filter="url(#f)"><filter id="f" x="2em"><feFlood/></filter><path d="M0 0H1e8V1"/></svg>"#;
+        #[cfg(feature = "text")]
+        let fontdb = usvgr::fontdb::Database::new();
+        let tree = usvgr::Tree::from_str(
+            svg,
+            &usvgr::Options::default(),
+            #[cfg(feature = "text")]
+            &fontdb,
+        )
+        .unwrap();
+
+        // Just make sure we don't panic, with and without caches.
+        for mut cache in [crate::SvgrCache::none(), crate::SvgrCache::new(10)] {
+            let pixmap = tiny_skia::Pixmap::new(1, 1).unwrap();
+            for ctx in [
+                super::Context::new_from_pixmap(&pixmap),
+                super::Context::new_from_pixmap_unsafe(&pixmap),
+            ] {
+                let mut pixmap = pixmap.clone();
+                crate::render(
+                    &tree,
+                    tiny_skia::Transform::identity(),
+                    &mut pixmap.as_mut(),
+                    &mut cache,
+                    &crate::PixmapPool::new(),
+                    &ctx,
+                );
+            }
+        }
     }
 }
