@@ -33,14 +33,15 @@ pub struct Context {
 }
 
 impl Context {
-    /// Default implementation of the max bounding box is 4 times the size of the pixmap.
+    /// Default implementation of the max bounding box spans 2 times the size of the pixmap
+    /// in every direction around it (5 times the pixmap size in total).
     pub fn new_from_pixmap(pixmap: &tiny_skia::Pixmap) -> Self {
         let target_size = tiny_skia::IntSize::from_wh(pixmap.width(), pixmap.height()).unwrap();
         let max_bbox = tiny_skia::IntRect::from_xywh(
             -(target_size.width() as i32) * 2,
             -(target_size.height() as i32) * 2,
-            target_size.width() * 4,
-            target_size.height() * 4,
+            target_size.width() * 5,
+            target_size.height() * 5,
         )
         .unwrap();
 
