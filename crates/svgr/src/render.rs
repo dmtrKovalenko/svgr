@@ -160,6 +160,19 @@ fn render_group(
     Some(())
 }
 
+/// Converts a group bbox into an integer one, expanding each side outwards by 2px
+/// to make sure that anti-aliased pixels would not be clipped.
+///
+/// Uses checked arithmetic, so huge/overflowing bboxes yield `None` instead of panicking.
+fn expand_layer_bbox(bbox: tiny_skia::NonZeroRect) -> Option<tiny_skia::IntRect> {
+    tiny_skia::IntRect::from_xywh(
+        (bbox.x().floor() as i32).checked_sub(2)?,
+        (bbox.y().floor() as i32).checked_sub(2)?,
+        (bbox.width().ceil() as u32).checked_add(4)?,
+        (bbox.height().ceil() as u32).checked_add(4)?,
+    )
+}
+
 /// Render a static group to a sub-pixmap and cache it
 fn render_and_cache_static_group(
     group: &usvgr::Group,
@@ -181,12 +194,7 @@ fn render_and_cache_static_group(
     let final_bbox = group.layer_bounding_box().transform(final_transform)?;
 
     let final_ibbox = if group.filters().is_empty() {
-        tiny_skia::IntRect::from_xywh(
-            final_bbox.x().floor() as i32 - 2,
-            final_bbox.y().floor() as i32 - 2,
-            final_bbox.width().ceil() as u32 + 4,
-            final_bbox.height().ceil() as u32 + 4,
-        )?
+        expand_layer_bbox(final_bbox)?
     } else {
         final_bbox.to_int_rect()
     };
@@ -250,12 +258,7 @@ fn draw_cached_static_group(
     };
 
     let final_ibbox = if group.filters().is_empty() {
-        tiny_skia::IntRect::from_xywh(
-            final_bbox.x().floor() as i32 - 2,
-            final_bbox.y().floor() as i32 - 2,
-            final_bbox.width().ceil() as u32 + 4,
-            final_bbox.height().ceil() as u32 + 4,
-        )
+        expand_layer_bbox(final_bbox)
     } else {
         Some(final_bbox.to_int_rect())
     };
@@ -297,12 +300,7 @@ fn render_isolated_group(
     let final_transform = parent_transform.pre_concat(group.transform());
     let final_bbox = group.layer_bounding_box().transform(final_transform)?;
     let final_ibbox = if group.filters().is_empty() {
-        tiny_skia::IntRect::from_xywh(
-            final_bbox.x().floor() as i32 - 2,
-            final_bbox.y().floor() as i32 - 2,
-            final_bbox.width().ceil() as u32 + 4,
-            final_bbox.height().ceil() as u32 + 4,
-        )?
+        expand_layer_bbox(final_bbox)?
     } else {
         final_bbox.to_int_rect()
     };
