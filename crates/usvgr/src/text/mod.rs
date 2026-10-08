@@ -156,6 +156,13 @@ impl FontResolver<'_> {
                     continue;
                 }
 
+                // Last resort fonts (e.g. macOS `LastResort.otf`) map every code point
+                // to a "missing glyph" box. Picking one would replace the whole run with
+                // boxes, so never use them as a fallback.
+                if is_last_resort_font(face) {
+                    continue;
+                }
+
                 // Check that the new face has the same style.
                 let base_face = fontdb.face(base_font_id)?;
                 if base_face.style != face.style
@@ -188,6 +195,12 @@ impl FontResolver<'_> {
             None
         })
     }
+}
+
+/// Whether the face is a "last resort" font, which has a placeholder glyph for every code point.
+fn is_last_resort_font(face: &fontdb::FaceInfo) -> bool {
+    face.post_script_name.contains("LastResort")
+        || face.families.iter().any(|(name, _)| name.contains("LastResort"))
 }
 
 impl std::fmt::Debug for FontResolver<'_> {
