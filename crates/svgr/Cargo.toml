@@ -1,6 +1,6 @@
 [package]
 name = "svgr"
-version = "0.46.1"
+version = "0.50.0-rc.1"
 authors = ["Yevhenii Reizner <razrfalcon@gmail.com>"]
 keywords = ["svg", "render", "raster"]
 license = "MPL-2.0"
@@ -22,8 +22,8 @@ log = "0.4"
 pico-args = { version = "0.5", features = ["eq-separator"] }
 rgb = "0.8"
 tiny-skia = "0.12.0"
-usvgr = { path = "../usvgr", version = "0.46.1", default-features = false }
-svgrtypes = { version = "0.46.1", path = "../svgrtypes" }
+usvgr = { path = "../usvgr", version = "0.50.0-rc.1", default-features = false }
+svgrtypes = { version = "0.50.0-rc.1", path = "../svgrtypes" }
 
 [dev-dependencies]
 png = "0.17"
