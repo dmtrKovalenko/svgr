@@ -367,9 +367,13 @@ pub(crate) fn convert_doc(
 
     // The background is drawn in the user space (the view box is applied by the
     // renderer), so it has to cover the whole view box.
-    if let Some(background_color) = background_color {
-        if let Some(path) = background_path(background_color, view_box.rect.to_rect()) {
-            tree.root.children.push(Node::Path(Box::new(path)));
+    // Without a size the view box is only a placeholder until `calculate_svg_bbox`
+    // detects it from the content, so the background is added after that.
+    if !restore_viewbox {
+        if let Some(background_color) = background_color {
+            if let Some(path) = background_path(background_color, view_box.rect.to_rect()) {
+                tree.root.children.push(Node::Path(Box::new(path)));
+            }
         }
     }
 
@@ -391,6 +395,13 @@ pub(crate) fn convert_doc(
 
     if restore_viewbox {
         calculate_svg_bbox(&mut tree);
+
+        if let Some(background_color) = background_color {
+            if let Some(path) = background_path(background_color, tree.view_box.rect.to_rect()) {
+                tree.root.children.insert(0, Node::Path(Box::new(path)));
+                tree.root.calculate_bounding_boxes();
+            }
+        }
     }
 
     Ok(tree)
