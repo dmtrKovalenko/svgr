@@ -730,3 +730,25 @@ fn resolve_fr_from_referenced_radial_gradient() {
 
     assert_eq!(rg.fr().get(), 25.0);
 }
+
+#[test]
+fn background_color_does_not_change_detected_size() {
+    let svg = "
+    <svg xmlns='http://www.w3.org/2000/svg' background-color='red'>
+        <rect width='20' height='30'/>
+    </svg>
+    ";
+
+    let fontdb = usvgr::fontdb::Database::new();
+    let tree = usvgr::Tree::from_str(svg, &usvgr::Options::default(), &fontdb).unwrap();
+    assert_eq!(tree.size(), usvgr::Size::from_wh(20.0, 30.0).unwrap());
+
+    // The background covers the detected size.
+    let usvgr::Node::Path(background) = &tree.root().children()[0] else {
+        unreachable!()
+    };
+    assert_eq!(
+        background.bounding_box(),
+        usvgr::Rect::from_xywh(0.0, 0.0, 20.0, 30.0).unwrap()
+    );
+}
