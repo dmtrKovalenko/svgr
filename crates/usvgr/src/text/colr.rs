@@ -182,7 +182,7 @@ impl<'a> GlyphPainter<'a> {
     }
 
     fn paint_sweep_gradient(&mut self, _: ttf_parser::colr::SweepGradient<'a>) {
-        println!("Warning: sweep gradients are not supported.")
+        log::warn!("Sweep gradients are not supported.")
     }
 }
 
@@ -282,7 +282,7 @@ impl<'a> ttf_parser::colr::Painter<'a> for GlyphPainter<'a> {
             CompositeMode::Color => "color",
             CompositeMode::Luminosity => "luminosity",
             _ => {
-                println!("Warning: unsupported blend mode: {:?}", mode);
+                log::warn!("Unsupported blend mode: {:?}.", mode);
                 "normal"
             }
         };
