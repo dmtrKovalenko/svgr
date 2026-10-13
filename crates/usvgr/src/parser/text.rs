@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::str::FromStr;
 use std::sync::Arc;
 
 use kurbo::{ParamCurve, ParamCurveArclen};
@@ -597,26 +598,14 @@ fn resolve_font_weight(node: SvgNode) -> u16 {
     let mut weight = 400;
     for n in nodes.iter().rev().skip(1) {
         // skip Root
-        // A number set from code has no text: read the number (CSS allows 1 to 1000).
-        // A non-finite one is invalid and, like invalid text, keeps the inherited weight.
+        // A number set from code has no text: read the number.
         if let Some(SvgAttributeValueRef::Float(number, _)) = n.attribute_value(AId::FontWeight) {
-            if number.is_finite() {
-                weight = number.round().clamp(1.0, 1000.0) as usize;
-            }
+            weight = font_weight_number(number).unwrap_or(weight);
             continue;
         }
         weight = match n.attribute(AId::FontWeight).unwrap_or("") {
             "normal" => 400,
             "bold" => 700,
-            "100" => 100,
-            "200" => 200,
-            "300" => 300,
-            "400" => 400,
-            "500" => 500,
-            "600" => 600,
-            "700" => 700,
-            "800" => 800,
-            "900" => 900,
             "bolder" => {
                 // By the CSS2 spec the default value should be 400
                 // so `bolder` will result in 500.
@@ -637,11 +626,24 @@ fn resolve_font_weight(node: SvgNode) -> u16 {
 
                 bound(100, weight.saturating_sub(step), 900)
             }
-            _ => weight,
+            // Any number, not only the multiples of 100: variable fonts have every weight.
+            text => svgrtypes::Number::from_str(text)
+                .ok()
+                .and_then(|number| font_weight_number(number.0 as f32))
+                .unwrap_or(weight),
         };
     }
 
     weight as u16
+}
+
+/// The weight of a `font-weight` number, the same whether it is written in the SVG or set
+/// from code. CSS Fonts 4 allows any number from 1 to 1000, as browsers do; one outside, or
+/// not finite, is invalid and keeps the inherited weight, like invalid text.
+fn font_weight_number(number: f32) -> Option<usize> {
+    (1.0..=1000.0)
+        .contains(&number)
+        .then(|| number.round() as usize)
 }
 
 /// Resolves text's character positions.
