@@ -153,6 +153,7 @@ pub(crate) fn convert(node: SvgNode, state: &converter::State, parent: &mut Grou
     parent.children.push(Node::Image(Box::new(Image {
         origin_href: href.to_string(),
         id,
+        fframes_data: node.fframes_data().clone(),
         visibility,
         view_box,
         rendering_mode,

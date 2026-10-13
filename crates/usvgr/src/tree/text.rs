@@ -634,6 +634,7 @@ pub enum WritingMode {
 #[derive(Clone, Debug)]
 pub struct Text {
     pub(crate) id: String,
+    pub(crate) fframes_data: crate::FframesData,
     pub(crate) rendering_mode: TextRendering,
     pub(crate) dx: Vec<f32>,
     pub(crate) dy: Vec<f32>,
@@ -694,6 +695,11 @@ impl Text {
     /// Can be empty.
     pub fn id(&self) -> &str {
         &self.id
+    }
+
+    /// The `data-fframes-*` attributes of the `text` element.
+    pub fn fframes_data(&self) -> &crate::FframesData {
+        &self.fframes_data
     }
 
     /// Rendering mode.

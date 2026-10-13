@@ -358,6 +358,8 @@ struct NodeData {
     kind: NodeKind,
     /// Pre-computed static hash for cache optimization (from NestedNodeData)
     static_hash: Option<u64>,
+    /// `data-fframes-*` attributes of the element.
+    fframes_data: crate::FframesData,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -407,6 +409,9 @@ pub struct NestedNodeData<'input> {
     /// If Some, the cache can use this directly instead of computing at runtime.
     /// This is set at compile-time by svgr-macro for fully static nodes.
     pub static_hash: Option<u64>,
+    /// `data-fframes-*` attributes without the prefix: `data-fframes-inspect="x"` is
+    /// `("inspect", x)`. Kept on the converted node, see [`crate::FframesData`].
+    pub data: Box<[(&'input str, SvgAttributeValue<'input>)]>,
 }
 
 /// Path geometry (`d` or `points`) known at compile time.
@@ -670,6 +675,12 @@ impl<'a, 'input: 'a> SvgNode<'a, 'input> {
             }
         }
         hasher.finish()
+    }
+
+    /// The element's `data-fframes-*` attributes.
+    #[inline]
+    pub fn fframes_data(&self) -> &'a crate::FframesData {
+        &self.d.fframes_data
     }
 
     /// Checks if the current node is an element.
@@ -1601,6 +1612,7 @@ mod static_hash_tests {
             attrs: attrs.into_boxed_slice(),
             children: children.into_iter().map(Some).collect(),
             static_hash,
+            data: Box::new([]),
         }
     }
 

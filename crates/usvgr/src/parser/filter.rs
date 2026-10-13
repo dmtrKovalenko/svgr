@@ -890,6 +890,7 @@ fn convert_image_inner(
 
     let image = crate::Image {
         id: cache.gen_image_id().take(),
+        fframes_data: crate::FframesData::default(),
         visibility: crate::Visibility::Visible,
         view_box,
         rendering_mode,

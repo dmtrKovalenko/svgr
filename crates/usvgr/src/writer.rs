@@ -647,6 +647,7 @@ fn write_element(node: &Node, is_clip_path: bool, opt: &WriteOptions, xml: &mut 
             if !img.id.is_empty() {
                 xml.write_id_attribute(&img.id, opt);
             }
+            write_fframes_data(&img.fframes_data, xml);
 
             xml.write_rect_attrs(img.view_box.rect);
             if !img.view_box.aspect.is_default() {
@@ -676,6 +677,7 @@ fn write_element(node: &Node, is_clip_path: bool, opt: &WriteOptions, xml: &mut 
                 if !text.id.is_empty() {
                     xml.write_id_attribute(&text.id, opt);
                 }
+                write_fframes_data(&text.fframes_data, xml);
 
                 xml.write_attribute("xml:space", "preserve");
 
@@ -849,6 +851,7 @@ fn write_group_element(g: &Group, is_clip_path: bool, opt: &WriteOptions, xml: &
     if !g.id.is_empty() {
         xml.write_id_attribute(&g.id, opt);
     };
+    write_fframes_data(&g.fframes_data, xml);
 
     if let Some(ref clip) = g.clip_path {
         xml.write_func_iri(AId::ClipPath, clip.id(), opt);
@@ -887,6 +890,15 @@ fn write_group_element(g: &Group, is_clip_path: bool, opt: &WriteOptions, xml: &
     write_elements(g, false, opt, xml);
 
     xml.end_element();
+}
+
+fn write_fframes_data(data: &crate::FframesData, xml: &mut XmlWriter) {
+    for (key, value) in data.iter() {
+        xml.write_attribute_fmt(
+            &format!("{}{key}", crate::FframesData::PREFIX),
+            format_args!("{value}"),
+        );
+    }
 }
 
 trait XmlWriterExt {
@@ -1239,6 +1251,7 @@ fn write_path(
     xml: &mut XmlWriter,
 ) {
     xml.start_svg_element(EId::Path);
+    write_fframes_data(&path.fframes_data, xml);
     if !path.id.is_empty() {
         xml.write_id_attribute(&path.id, opt);
     }

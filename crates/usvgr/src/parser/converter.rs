@@ -749,8 +749,15 @@ pub(crate) fn convert_group(
 
     let abs_transform = parent.abs_transform.pre_concat(transform);
     let dummy = Rect::from_xywh(0.0, 0.0, 0.0, 0.0).unwrap();
+    // Only `g` and `use` keep theirs: any other element carries its data on its own node.
+    let fframes_data = if is_g_or_use {
+        node.fframes_data().clone()
+    } else {
+        crate::FframesData::default()
+    };
     let mut g = Group {
         id,
+        fframes_data,
         transform,
         abs_transform,
         opacity,
@@ -986,10 +993,11 @@ fn convert_path(
         ),
     };
 
-    let path = match path {
+    let mut path = match path {
         Some(v) => v,
         None => return,
     };
+    path.fframes_data = node.fframes_data().clone();
 
     match (raw_paint_order.order, marker) {
         ([PaintOrderKind::Markers, _, _], Some(markers_node)) => {

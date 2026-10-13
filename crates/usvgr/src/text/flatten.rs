@@ -443,6 +443,7 @@ fn raster(font: &ttf_parser::Face, glyph_id: GlyphId) -> Option<BitmapImage> {
         let bitmap_image = BitmapImage {
             image: Image {
                 id: String::new(),
+                fframes_data: crate::FframesData::default(),
                 visibility: Visibility::Visible,
                 view_box: ViewBox {
                     rect,

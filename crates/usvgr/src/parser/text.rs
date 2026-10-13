@@ -124,8 +124,10 @@ pub(crate) fn convert(
 
     let dummy = Rect::from_xywh(0.0, 0.0, 0.0, 0.0).unwrap();
 
+    let fframes_data = text_node.fframes_data().clone();
     let text = Text {
         id,
+        fframes_data: fframes_data.clone(),
         rendering_mode,
         dx: pos_list.iter().map(|v| v.dx.unwrap_or(0.0)).collect(),
         dy: pos_list.iter().map(|v| v.dy.unwrap_or(0.0)).collect(),
@@ -144,13 +146,16 @@ pub(crate) fn convert(
         layouted: vec![],
     };
 
-    if let Some(text) = crate::text::convert_with_cache(
+    if let Some(mut text) = crate::text::convert_with_cache(
         text,
         &state.opt.font_resolver,
         state.fontdb,
         cache.usvgr_text_cache.as_ref(),
         &mut cache.glyph_cache,
     ) {
+        // The outline cache ignores the data, so a cached text may come from another element.
+        text.flattened.fframes_data = fframes_data.clone();
+        text.fframes_data = fframes_data;
         parent.children.push(Node::Text(Box::new(text)));
     }
 }
