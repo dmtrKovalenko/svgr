@@ -597,6 +597,14 @@ fn resolve_font_weight(node: SvgNode) -> u16 {
     let mut weight = 400;
     for n in nodes.iter().rev().skip(1) {
         // skip Root
+        // A number set from code has no text: read the number (CSS allows 1 to 1000).
+        // A non-finite one is invalid and, like invalid text, keeps the inherited weight.
+        if let Some(SvgAttributeValueRef::Float(number, _)) = n.attribute_value(AId::FontWeight) {
+            if number.is_finite() {
+                weight = number.round().clamp(1.0, 1000.0) as usize;
+            }
+            continue;
+        }
         weight = match n.attribute(AId::FontWeight).unwrap_or("") {
             "normal" => 400,
             "bold" => 700,
@@ -627,7 +635,7 @@ fn resolve_font_weight(node: SvgNode) -> u16 {
                 // we will follow such behavior for now.
                 let step = if weight == 400 { 200 } else { 100 };
 
-                bound(100, weight - step, 900)
+                bound(100, weight.saturating_sub(step), 900)
             }
             _ => weight,
         };

@@ -1439,7 +1439,14 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for svgrtypes::Color {
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for svgrtypes::Angle {
     fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
-        Self::from_str(value.as_str()?).ok()
+        match value {
+            // A plain number is an angle in degrees.
+            SvgAttributeValueRef::Float(number, _) => Some(svgrtypes::Angle {
+                number: number as f64,
+                unit: svgrtypes::AngleUnit::Degrees,
+            }),
+            _ => Self::from_str(value.as_str()?).ok(),
+        }
     }
 }
 
@@ -1457,6 +1464,10 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for svgrtypes::Paint<'a> {
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for Vec<f32> {
     fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        // A single number is a list of one; one set from code has no text to parse.
+        if let SvgAttributeValueRef::Float(number, _) = value {
+            return Some(vec![number]);
+        }
         let s = value.as_str()?;
         let mut list = Vec::new();
         for n in svgrtypes::NumberListParser::from(s) {
@@ -1468,7 +1479,11 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for Vec<f32> {
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for Vec<svgrtypes::Length> {
-    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+    fn parse(node: SvgNode, aid: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        // A single number or length is a list of one; one set from code has no text to parse.
+        if let SvgAttributeValueRef::Float(..) | SvgAttributeValueRef::Length(_) = value {
+            return Some(vec![svgrtypes::Length::parse(node, aid, value)?]);
+        }
         let s = value.as_str()?;
         let mut list = Vec::new();
         for n in svgrtypes::LengthListParser::from(s) {
