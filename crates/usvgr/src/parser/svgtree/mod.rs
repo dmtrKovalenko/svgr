@@ -1394,8 +1394,18 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for MaybeTransform {
 }
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for svgrtypes::TransformOrigin {
-    fn parse(_: SvgNode, _: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
-        Self::from_str(value.as_str()?).ok()
+    fn parse(node: SvgNode, aid: AId, value: SvgAttributeValueRef<'a>) -> Option<Self> {
+        match value {
+            // A single number or length is the horizontal offset and the vertical one is the
+            // center, as in the text form. One set from code or parsed at compile time has no
+            // text to parse.
+            SvgAttributeValueRef::Float(..) | SvgAttributeValueRef::Length(_) => Some(Self::new(
+                svgrtypes::Length::parse(node, aid, value)?,
+                svgrtypes::Length::new(50.0, LengthUnit::Percent),
+                svgrtypes::Length::new(0.0, LengthUnit::Px),
+            )),
+            _ => Self::from_str(value.as_str()?).ok(),
+        }
     }
 }
 
