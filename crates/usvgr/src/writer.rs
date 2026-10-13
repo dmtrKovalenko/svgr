@@ -231,27 +231,7 @@ fn write_filters(tree: &Tree, opt: &WriteOptions, xml: &mut XmlWriter) {
                     xml.write_filter_primitive_attrs(filter.rect(), fe);
                     xml.write_filter_input(AId::In, &blend.input1);
                     xml.write_filter_input(AId::In2, &blend.input2);
-                    xml.write_svg_attribute(
-                        AId::Mode,
-                        match blend.mode {
-                            BlendMode::Normal => "normal",
-                            BlendMode::Multiply => "multiply",
-                            BlendMode::Screen => "screen",
-                            BlendMode::Overlay => "overlay",
-                            BlendMode::Darken => "darken",
-                            BlendMode::Lighten => "lighten",
-                            BlendMode::ColorDodge => "color-dodge",
-                            BlendMode::ColorBurn => "color-burn",
-                            BlendMode::HardLight => "hard-light",
-                            BlendMode::SoftLight => "soft-light",
-                            BlendMode::Difference => "difference",
-                            BlendMode::Exclusion => "exclusion",
-                            BlendMode::Hue => "hue",
-                            BlendMode::Saturation => "saturation",
-                            BlendMode::Color => "color",
-                            BlendMode::Luminosity => "luminosity",
-                        },
-                    );
+                    xml.write_svg_attribute(AId::Mode, &blend.mode.to_string());
                     xml.write_svg_attribute(AId::Result, &fe.result);
                     xml.end_element();
                 }
@@ -314,16 +294,16 @@ fn write_filters(tree: &Tree, opt: &WriteOptions, xml: &mut XmlWriter) {
                 filter::Kind::Image(ref img) => {
                     xml.start_svg_element(EId::FeImage);
                     xml.write_filter_primitive_attrs(filter.rect(), fe);
-                    xml.write_aspect(img.aspect);
-                    xml.write_svg_attribute(
-                        AId::ImageRendering,
-                        match img.rendering_mode {
-                            ImageRendering::OptimizeQuality => "optimizeQuality",
-                            ImageRendering::OptimizeSpeed => "optimizeSpeed",
-                        },
-                    );
                     match img.data {
                         filter::ImageKind::Image(ref kind) => {
+                            xml.write_aspect(img.aspect);
+                            xml.write_svg_attribute(
+                                AId::ImageRendering,
+                                match img.rendering_mode {
+                                    ImageRendering::OptimizeQuality => "optimizeQuality",
+                                    ImageRendering::OptimizeSpeed => "optimizeSpeed",
+                                },
+                            );
                             xml.write_image_data(kind);
                         }
                         filter::ImageKind::Use(ref node) => {
@@ -546,6 +526,9 @@ fn write_defs(tree: &Tree, opt: &WriteOptions, xml: &mut XmlWriter) {
         xml.write_svg_attribute(AId::R, &rg.r.get());
         xml.write_svg_attribute(AId::Fx, &rg.fx);
         xml.write_svg_attribute(AId::Fy, &rg.fy);
+        if rg.fr.get() > 0.0 {
+            xml.write_svg_attribute(AId::Fr, &rg.fr.get());
+        }
         write_base_grad(&rg.base, opt, xml);
         xml.end_element();
     }
@@ -828,16 +811,35 @@ fn write_group_element(g: &Group, is_clip_path: bool, opt: &WriteOptions, xml: &
         // Same with text. Text elements will be converted into groups,
         // but only the group's children should be written.
         for child in &g.children {
-            if let Node::Path(ref path) = child {
-                let clip_id = g.clip_path.as_ref().map(|cp| cp.id().to_string());
-                write_path(
-                    path,
-                    is_clip_path,
-                    g.transform,
-                    clip_id.as_deref(),
-                    opt,
-                    xml,
-                );
+            match child {
+                Node::Group(child_group) => {
+                    write_group_element(child_group, is_clip_path, opt, xml);
+                }
+                Node::Path(child_path) => {
+                    let clip_id = g.clip_path.as_ref().map(|cp| cp.id().to_string());
+                    write_path(
+                        child_path,
+                        is_clip_path,
+                        g.transform,
+                        clip_id.as_deref(),
+                        opt,
+                        xml,
+                    );
+                }
+                Node::FastShape(child_shape) => {
+                    if let Some(child_path) = child_shape.to_path() {
+                        let clip_id = g.clip_path.as_ref().map(|cp| cp.id().to_string());
+                        write_path(
+                            &child_path,
+                            is_clip_path,
+                            g.transform,
+                            clip_id.as_deref(),
+                            opt,
+                            xml,
+                        );
+                    }
+                }
+                _ => {}
             }
         }
         return;
@@ -873,31 +875,12 @@ fn write_group_element(g: &Group, is_clip_path: bool, opt: &WriteOptions, xml: &
     xml.write_transform(AId::Transform, g.transform, opt);
 
     if g.blend_mode != BlendMode::Normal || g.isolate {
-        let blend_mode = match g.blend_mode {
-            BlendMode::Normal => "normal",
-            BlendMode::Multiply => "multiply",
-            BlendMode::Screen => "screen",
-            BlendMode::Overlay => "overlay",
-            BlendMode::Darken => "darken",
-            BlendMode::Lighten => "lighten",
-            BlendMode::ColorDodge => "color-dodge",
-            BlendMode::ColorBurn => "color-burn",
-            BlendMode::HardLight => "hard-light",
-            BlendMode::SoftLight => "soft-light",
-            BlendMode::Difference => "difference",
-            BlendMode::Exclusion => "exclusion",
-            BlendMode::Hue => "hue",
-            BlendMode::Saturation => "saturation",
-            BlendMode::Color => "color",
-            BlendMode::Luminosity => "luminosity",
-        };
-
         // For reasons unknown, `mix-blend-mode` and `isolation` must be written
         // as `style` attribute.
         let isolation = if g.isolate { "isolate" } else { "auto" };
         xml.write_attribute_fmt(
             AId::Style.to_str(),
-            format_args!("mix-blend-mode:{};isolation:{}", blend_mode, isolation),
+            format_args!("mix-blend-mode:{};isolation:{}", g.blend_mode, isolation),
         );
     }
 

@@ -23,6 +23,7 @@ mod text;
 
 pub use image::PreloadedImageData;
 pub use options::Options;
+#[cfg(feature = "writer")]
 pub(crate) use svgtree::{AId, EId};
 
 pub use self::converter::Cache;
@@ -32,6 +33,9 @@ pub use self::converter::Cache;
 pub enum Error {
     /// Only UTF-8 content are supported.
     NotAnUtf8Str,
+
+    /// `svgz` feature is required to parse SVGZ data.
+    SvgzFeatureNotEnabled,
 
     /// Compressed SVG must use the GZip algorithm.
     MalformedGZip,
@@ -62,6 +66,9 @@ impl std::fmt::Display for Error {
             Error::NotAnUtf8Str => {
                 write!(f, "provided data has not an UTF-8 encoding")
             }
+            Self::SvgzFeatureNotEnabled => {
+                write!(f, "enable svgz cargo feature to decode SVGZ data")
+            }
             Error::MalformedGZip => {
                 write!(f, "provided data has a malformed GZip content")
             }
@@ -80,7 +87,7 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-trait OptionLog {
+pub(crate) trait OptionLog {
     fn log_none<F: FnOnce()>(self, f: F) -> Self;
 }
 
@@ -104,14 +111,20 @@ impl crate::Tree {
         #[cfg(feature = "text")] fontdb: &fontdb::Database,
     ) -> Result<Self, Error> {
         if data.starts_with(&[0x1f, 0x8b]) {
-            let data = decompress_svgz(data)?;
-            let text = std::str::from_utf8(&data).map_err(|_| Error::NotAnUtf8Str)?;
-            Self::from_str(
-                text,
-                opt,
-                #[cfg(feature = "text")]
-                fontdb,
-            )
+            #[cfg(feature = "svgz")]
+            {
+                let data = decompress_svgz(data)?;
+                let text = std::str::from_utf8(&data).map_err(|_| Error::NotAnUtf8Str)?;
+                Self::from_str(
+                    text,
+                    opt,
+                    #[cfg(feature = "text")]
+                    fontdb,
+                )
+            }
+
+            #[cfg(not(feature = "svgz"))]
+            Err(Error::SvgzFeatureNotEnabled)
         } else {
             let text = std::str::from_utf8(data).map_err(|_| Error::NotAnUtf8Str)?;
             Self::from_str(
@@ -152,7 +165,7 @@ impl crate::Tree {
         cache: &mut Cache,
         #[cfg(feature = "text")] fontdb: &fontdb::Database,
     ) -> Result<Self, Error> {
-        let doc = svgtree::Document::parse_tree(doc)?;
+        let doc = svgtree::Document::parse_tree_with_style_sheet(doc, opt.style_sheet.as_deref())?;
         self::converter::convert_doc(
             &doc,
             opt,
@@ -168,7 +181,7 @@ impl crate::Tree {
         opt: &Options,
         #[cfg(feature = "text")] fontdb: &fontdb::Database,
     ) -> Result<Self, Error> {
-        let doc = svgtree::Document::parse_tree(doc)?;
+        let doc = svgtree::Document::parse_tree_with_style_sheet(doc, opt.style_sheet.as_deref())?;
         self::converter::convert_doc(
             &doc,
             opt,
@@ -231,6 +244,7 @@ impl crate::Tree {
 }
 
 /// Decompresses an SVGZ file.
+#[cfg(feature = "svgz")]
 pub fn decompress_svgz(data: &[u8]) -> Result<Vec<u8>, Error> {
     use std::io::Read;
 
@@ -245,14 +259,14 @@ pub fn decompress_svgz(data: &[u8]) -> Result<Vec<u8>, Error> {
 #[inline]
 pub(crate) fn f32_bound(min: f32, val: f32, max: f32) -> f32 {
     debug_assert!(min.is_finite());
-    debug_assert!(val.is_finite());
     debug_assert!(max.is_finite());
 
     if val > max {
         max
-    } else if val < min {
-        min
-    } else {
+    } else if val >= min {
         val
+    } else {
+        // Catches `val < min` as well as a NaN `val`.
+        min
     }
 }

@@ -417,6 +417,7 @@ fn process(args: Args) -> Result<(), String> {
             .unwrap(),
         image_data: None,
         sub_svg_data: None,
+        ..usvgr::Options::default()
     };
 
     let input_svg = match in_svg {

@@ -25,6 +25,8 @@ pub enum svgr_error {
     OK = 0,
     /// Only UTF-8 content are supported.
     NOT_AN_UTF8_STR,
+    /// `svgr` must be compiled with SVGZ decoding support.
+    SVGZ_UNSUPPORTED,
     /// Failed to open the provided file.
     FILE_OPEN_FAILED,
     /// Compressed SVG must use the GZip algorithm.
@@ -847,6 +849,7 @@ fn cstr_to_str(text: *const c_char) -> Option<&'static str> {
 fn convert_error(e: usvgr::Error) -> svgr_error {
     match e {
         usvgr::Error::NotAnUtf8Str => svgr_error::NOT_AN_UTF8_STR,
+        usvgr::Error::SvgzFeatureNotEnabled => svgr_error::SVGZ_UNSUPPORTED,
         usvgr::Error::MalformedGZip => svgr_error::MALFORMED_GZIP,
         usvgr::Error::ElementsLimitReached => svgr_error::ELEMENTS_LIMIT_REACHED,
         usvgr::Error::InvalidSize => svgr_error::INVALID_SIZE,

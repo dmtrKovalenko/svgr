@@ -1,0 +1,14 @@
+<svg version="1.1" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <title>With size on `use` and relative units</title>
+    <symbol id="image1">
+        <image width="100%" height="100%"
+               href="../../../resources/image-200x200-yellow.png"></image>
+    </symbol>
+
+    <g transform="translate(25 50)">
+        <use href="#image1" width="150" height="100"></use>
+    </g>
+
+    <!-- image frame -->
+    <rect id="frame" x="1" y="1" width="198" height="198" fill="none" stroke="black"/>
+</svg>

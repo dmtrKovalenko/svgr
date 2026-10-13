@@ -10,7 +10,7 @@ use svgrtypes::{Length, LengthUnit as Unit, PaintOrderKind, TransformOrigin};
 use tiny_skia_path::Transform;
 
 #[cfg(feature = "text")]
-use self::text_to_paths::UsvgrTextOutlineCache;
+use crate::text::{GlyphCache, UsvgrTextOutlineCache};
 
 use super::svgtree::{self, AId, EId, FromValue, SvgNode};
 use super::units::{self, convert_length};
@@ -44,6 +44,9 @@ pub struct State<'a> {
 pub struct Cache {
     #[cfg(feature = "text")]
     pub usvgr_text_cache: Option<UsvgrTextOutlineCache>,
+    /// Resolved glyphs of the current conversion. Cleared by `clear`.
+    #[cfg(feature = "text")]
+    pub(crate) glyph_cache: GlyphCache,
     pub clip_paths: HashMap<String, Arc<ClipPath>>,
     pub masks: HashMap<String, Arc<Mask>>,
     pub filters: HashMap<String, Arc<filter::Filter>>,
@@ -57,6 +60,7 @@ pub struct Cache {
     clip_path_index: usize,
     mask_index: usize,
     filter_index: usize,
+    image_index: usize,
 }
 
 impl Cache {
@@ -70,6 +74,10 @@ impl Cache {
         self.filters.clear();
         self.all_ids.clear();
         self.paint.clear();
+        // Glyphs are keyed by font database IDs and the font database is
+        // provided per conversion, so they must not be reused across conversions.
+        #[cfg(feature = "text")]
+        self.glyph_cache.clear();
 
         self.linear_gradient_index = 0;
         self.radial_gradient_index = 0;
@@ -77,6 +85,7 @@ impl Cache {
         self.clip_path_index = 0;
         self.mask_index = 0;
         self.filter_index = 0;
+        self.image_index = 0;
     }
 
     /// Creates a new cache with an external text outline cache
@@ -148,6 +157,17 @@ impl Cache {
         loop {
             self.filter_index += 1;
             let new_id = format!("filter{}", self.filter_index);
+            let new_hash = string_hash(&new_id);
+            if !self.all_ids.contains(&new_hash) {
+                return NonEmptyString::new(new_id).unwrap();
+            }
+        }
+    }
+
+    pub(crate) fn gen_image_id(&mut self) -> NonEmptyString {
+        loop {
+            self.image_index += 1;
+            let new_id = format!("image{}", self.image_index);
             let new_hash = string_hash(&new_id);
             if !self.all_ids.contains(&new_hash) {
                 return NonEmptyString::new(new_id).unwrap();
@@ -274,6 +294,10 @@ pub(crate) fn convert_doc(
     cache: &mut Cache,
     #[cfg(feature = "text")] fontdb: &fontdb::Database,
 ) -> Result<Tree, Error> {
+    // Resolved glyphs are only valid for the font database of this conversion.
+    #[cfg(feature = "text")]
+    cache.glyph_cache.clear();
+
     let svg = svg_doc.root_element();
     let (size, restore_viewbox) = resolve_svg_size(
         &svg,
@@ -288,6 +312,11 @@ pub(crate) fn convert_doc(
             .unwrap_or_else(|| size.to_non_zero_rect(0.0, 0.0)),
         aspect: svg.attribute(AId::PreserveAspectRatio).unwrap_or_default(),
     };
+
+    // Non-standard `background-color` attribute on the root `svg` element.
+    // Compile-time svgtrees (svgr-macro) may store it pre-parsed as a color,
+    // which the `svgrtypes::Color` value parser handles as well.
+    let background_color = svg.attribute::<svgrtypes::Color>(AId::BackgroundColor);
 
     let mut tree = Tree {
         size,
@@ -327,9 +356,23 @@ pub(crate) fn convert_doc(
                     | EId::Mask
                     | EId::Pattern
                     | EId::RadialGradient
-            ) && !node.element_id().is_empty()
-            {
-                cache.all_ids.insert(string_hash(node.element_id()));
+                    | EId::Image
+            ) {
+                if !node.element_id().is_empty() {
+                    cache.all_ids.insert(string_hash(node.element_id()));
+                }
+            }
+        }
+    }
+
+    // The background is drawn in the user space (the view box is applied by the
+    // renderer), so it has to cover the whole view box.
+    // Without a size the view box is only a placeholder until `calculate_svg_bbox`
+    // detects it from the content, so the background is added after that.
+    if !restore_viewbox {
+        if let Some(background_color) = background_color {
+            if let Some(path) = background_path(background_color, view_box.rect.to_rect()) {
+                tree.root.children.push(Node::Path(Box::new(path)));
             }
         }
     }
@@ -352,9 +395,42 @@ pub(crate) fn convert_doc(
 
     if restore_viewbox {
         calculate_svg_bbox(&mut tree);
+
+        if let Some(background_color) = background_color {
+            if let Some(path) = background_path(background_color, tree.view_box.rect.to_rect()) {
+                tree.root.children.insert(0, Node::Path(Box::new(path)));
+                tree.root.calculate_bounding_boxes();
+            }
+        }
     }
 
     Ok(tree)
+}
+
+fn background_path(background_color: svgrtypes::Color, area: Rect) -> Option<Path> {
+    let path = tiny_skia_path::PathBuilder::from_rect(area);
+
+    let fill = Fill {
+        paint: Paint::Color(Color::new_rgb(
+            background_color.red,
+            background_color.green,
+            background_color.blue,
+        )),
+        opacity: Opacity::new(background_color.alpha as f32 / 255.0)?,
+        ..Default::default()
+    };
+
+    Path::new(
+        String::new(),
+        Visibility::Visible,
+        Some(fill),
+        None,
+        PaintOrder::FillAndStroke,
+        ShapeRendering::default(),
+        Arc::new(path),
+        Transform::default(),
+        None,
+    )
 }
 
 fn resolve_svg_size(
@@ -417,7 +493,16 @@ fn resolve_svg_size(
             svg.convert_user_length(AId::Height, &state, def)
         };
 
-        Size::from_wh(w, h)
+        // If exactly one of width and height is specified, compute the missing
+        // dimension from the specified one and the viewBox aspect ratio.
+        match (
+            svg.attribute::<Length>(AId::Width),
+            svg.attribute::<Length>(AId::Height),
+        ) {
+            (Some(_), None) => Size::from_wh(w, vbox.height() * w / vbox.width()),
+            (None, Some(_)) => Size::from_wh(vbox.width() * h / vbox.height(), h),
+            (_, _) => Size::from_wh(w, h),
+        }
     } else {
         Size::from_wh(
             svg.convert_user_length(AId::Width, &state, def),
@@ -480,6 +565,18 @@ pub(crate) fn convert_element(node: SvgNode, state: &State, cache: &mut Cache, p
         return;
     }
 
+    // A nested `svg` is handled just like `use`: it must not be wrapped in an
+    // additional `convert_group`, otherwise its `transform` (and other group
+    // properties) would be applied twice, since `convert_svg`
+    // already creates its own group. The outermost `svg` (no parent element)
+    // is intentionally not handled here - it's processed directly in
+    // `convert_doc`.
+    if tag_name == EId::Svg && node.parent_element().is_some() {
+        super::use_node::convert_svg(node, state, cache, parent);
+
+        return;
+    }
+
     if let Some(g) = convert_group(node, state, false, cache, parent, &|cache, g| {
         convert_element_impl(tag_name, node, state, cache, g);
     }) {
@@ -522,12 +619,10 @@ fn convert_element_impl(
             }
         }
         EId::Svg => {
-            if node.parent_element().is_some() {
-                super::use_node::convert_svg(node, state, cache, parent);
-            } else {
-                // Skip root `svg`.
-                convert_children(node, state, cache, parent);
-            }
+            // Only the outermost `svg` reaches this point; nested `svg` elements are
+            // handled earlier in `convert_element`. The root `svg` itself is
+            // skipped and only its children are converted.
+            convert_children(node, state, cache, parent);
         }
         EId::G => {
             convert_children(node, state, cache, parent);
@@ -829,6 +924,7 @@ fn convert_path(
             abs_transform: parent.abs_transform,
             ..Group::empty()
         };
+
         let mut marker_state = state.clone();
 
         let bbox = tiny_skia_path
@@ -895,29 +991,19 @@ fn convert_path(
         None => return,
     };
 
-    match raw_paint_order.order {
-        [PaintOrderKind::Markers, _, _] => {
-            if let Some(markers_node) = marker {
-                parent.children.push(Node::Group(Box::new(markers_node)));
-            }
-
+    match (raw_paint_order.order, marker) {
+        ([PaintOrderKind::Markers, _, _], Some(markers_node)) => {
+            parent.children.push(Node::Group(Box::new(markers_node)));
             parent.children.push(path_node(path.clone(), shape));
         }
-        [first, PaintOrderKind::Markers, last] => {
+        ([first, PaintOrderKind::Markers, last], Some(markers_node)) => {
             append_single_paint_path(first, &path, shape, parent);
-
-            if let Some(markers_node) = marker {
-                parent.children.push(Node::Group(Box::new(markers_node)));
-            }
-
+            parent.children.push(Node::Group(Box::new(markers_node)));
             append_single_paint_path(last, &path, shape, parent);
         }
-        [_, _, PaintOrderKind::Markers] => {
+        ([_, _, PaintOrderKind::Markers], Some(markers_node)) => {
             parent.children.push(path_node(path.clone(), shape));
-
-            if let Some(markers_node) = marker {
-                parent.children.push(Node::Group(Box::new(markers_node)));
-            }
+            parent.children.push(Node::Group(Box::new(markers_node)));
         }
         _ => parent.children.push(path_node(path.clone(), shape)),
     }

@@ -6,6 +6,7 @@ pub mod filter;
 mod geom;
 mod text;
 
+use std::fmt::Display;
 use std::sync::Arc;
 pub use strict_num::{self, ApproxEqUlps, NonZeroPositiveF32, NormalizedF32, PositiveF32};
 pub use svgrtypes::{Align, AspectRatio};
@@ -36,6 +37,10 @@ impl NonEmptyString {
 
     pub(crate) fn get(&self) -> &str {
         &self.0
+    }
+
+    pub(crate) fn take(self) -> String {
+        self.0
     }
 }
 
@@ -188,6 +193,8 @@ impl std::str::FromStr for ImageRendering {
         match s {
             "optimizeQuality" => Ok(ImageRendering::OptimizeQuality),
             "optimizeSpeed" => Ok(ImageRendering::OptimizeSpeed),
+            "smooth" | "high-quality" => Ok(ImageRendering::OptimizeQuality),
+            "crisp-edges" | "pixelated" => Ok(ImageRendering::OptimizeSpeed),
             _ => Err("invalid"),
         }
     }
@@ -220,6 +227,30 @@ pub enum BlendMode {
 impl Default for BlendMode {
     fn default() -> Self {
         Self::Normal
+    }
+}
+
+impl Display for BlendMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let blend_mode = match self {
+            BlendMode::Normal => "normal",
+            BlendMode::Multiply => "multiply",
+            BlendMode::Screen => "screen",
+            BlendMode::Overlay => "overlay",
+            BlendMode::Darken => "darken",
+            BlendMode::Lighten => "lighten",
+            BlendMode::ColorDodge => "color-dodge",
+            BlendMode::ColorBurn => "color-burn",
+            BlendMode::HardLight => "hard-light",
+            BlendMode::SoftLight => "soft-light",
+            BlendMode::Difference => "difference",
+            BlendMode::Exclusion => "exclusion",
+            BlendMode::Hue => "hue",
+            BlendMode::Saturation => "saturation",
+            BlendMode::Color => "color",
+            BlendMode::Luminosity => "luminosity",
+        };
+        write!(f, "{blend_mode}")
     }
 }
 
@@ -352,6 +383,7 @@ pub struct RadialGradient {
     pub(crate) r: PositiveF32,
     pub(crate) fx: f32,
     pub(crate) fy: f32,
+    pub(crate) fr: PositiveF32,
 }
 
 impl std::hash::Hash for RadialGradient {
@@ -362,6 +394,7 @@ impl std::hash::Hash for RadialGradient {
         self.r.hash(state);
         self.fx.to_bits().hash(state);
         self.fy.to_bits().hash(state);
+        self.fr.hash(state);
         self.base.hash(state);
     }
 }
@@ -390,6 +423,11 @@ impl RadialGradient {
     /// `fy` coordinate.
     pub fn fy(&self) -> f32 {
         self.fy
+    }
+
+    /// Focal radius.
+    pub fn fr(&self) -> PositiveF32 {
+        self.fr
     }
 }
 
@@ -1266,7 +1304,7 @@ impl Group {
 
     /// Element's absolute transform.
     ///
-    /// Contains all ancestors transforms excluding element's transform.
+    /// Contains all ancestors transforms including group's transform.
     ///
     /// Note that subroots, like clipPaths, masks and patterns, have their own root transform,
     /// which isn't affected by the node that references this subroot.
@@ -1793,7 +1831,7 @@ impl Path {
 
     /// Element's absolute transform.
     ///
-    /// Contains all ancestors transforms excluding element's transform.
+    /// Contains all ancestors transforms including elements's transform.
     ///
     /// Note that this is not the relative transform present in SVG.
     /// The SVG one would be set only on groups.
@@ -1948,7 +1986,7 @@ impl Image {
 
     /// Element's absolute transform.
     ///
-    /// Contains all ancestors transforms excluding element's transform.
+    /// Contains all ancestors transforms including elements's transform.
     ///
     /// Note that this is not the relative transform present in SVG.
     /// The SVG one would be set only on groups.
@@ -2131,7 +2169,7 @@ fn has_text_nodes(root: &Group) -> bool {
         }
     }
 
-    true
+    false
 }
 
 fn loop_over_paint_servers(parent: &Group, f: &mut dyn FnMut(&Paint)) {

@@ -1,6 +1,6 @@
 [package]
 name = "svgrtypes"
-version = "0.46.1"
+version = "0.50.0-rc.1"
 authors = ["Yevhenii Reizner <razrfalcon@gmail.com>"]
 categories = ["parser-implementations"]
 description = "SVG types parser."
@@ -12,7 +12,7 @@ readme = "README.md"
 repository = "https://github.com/dmtrKovalenko/svgrtypes"
 
 [dependencies]
-siphasher = "0.3"
-kurbo = "0.8"
+siphasher = "1.0"
+kurbo = "0.13"
 quote = "1"
 proc-macro2 = "1"
