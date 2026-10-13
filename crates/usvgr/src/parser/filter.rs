@@ -228,7 +228,11 @@ fn convert_url(
         if let Some(object_bbox) = object_bbox {
             rect = rect.bbox_transform(object_bbox);
         } else {
-            log::warn!("Filters on zero-sized shapes are not allowed.");
+            log::warn!(
+                "Filter '{}' cannot be applied to a zero-sized element \
+                 (its region uses objectBoundingBox units). Skipped.",
+                node.element_id()
+            );
             return Err(());
         }
     }
