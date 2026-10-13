@@ -590,10 +590,6 @@ fn conv_font_stretch(node: SvgNode) -> FontStretch {
 }
 
 fn resolve_font_weight(node: SvgNode) -> u16 {
-    fn bound(min: usize, val: usize, max: usize) -> usize {
-        std::cmp::max(min, std::cmp::min(max, val))
-    }
-
     let nodes: Vec<_> = node.ancestors().collect();
     let mut weight = 400;
     for n in nodes.iter().rev().skip(1) {
@@ -603,34 +599,33 @@ fn resolve_font_weight(node: SvgNode) -> u16 {
             weight = font_weight_number(number).unwrap_or(weight);
             continue;
         }
-        weight = match n.attribute(AId::FontWeight).unwrap_or("") {
-            "normal" => 400,
-            "bold" => 700,
-            "bolder" => {
-                // By the CSS2 spec the default value should be 400
-                // so `bolder` will result in 500.
-                // But Chrome and Inkscape will give us 700.
-                // Have no idea is it a bug or something, but
-                // we will follow such behavior for now.
-                let step = if weight == 400 { 300 } else { 100 };
-
-                bound(100, weight + step, 900)
+        // CSS keywords are ASCII case-insensitive.
+        let text = n.attribute(AId::FontWeight).unwrap_or("").trim();
+        weight = if text.eq_ignore_ascii_case("normal") {
+            400
+        } else if text.eq_ignore_ascii_case("bold") {
+            700
+        } else if text.eq_ignore_ascii_case("bolder") {
+            // The relative weights of CSS Fonts 4, as browsers compute them.
+            match weight {
+                ..350 => 400,
+                350..550 => 700,
+                550..900 => 900,
+                _ => weight,
             }
-            "lighter" => {
-                // By the CSS2 spec the default value should be 400
-                // so `lighter` will result in 300.
-                // But Chrome and Inkscape will give us 200.
-                // Have no idea is it a bug or something, but
-                // we will follow such behavior for now.
-                let step = if weight == 400 { 200 } else { 100 };
-
-                bound(100, weight.saturating_sub(step), 900)
+        } else if text.eq_ignore_ascii_case("lighter") {
+            match weight {
+                ..100 => weight,
+                100..550 => 100,
+                550..750 => 400,
+                _ => 700,
             }
+        } else {
             // Any number, not only the multiples of 100: variable fonts have every weight.
-            text => svgrtypes::Number::from_str(text)
+            svgrtypes::Number::from_str(text)
                 .ok()
                 .and_then(|number| font_weight_number(number.0 as f32))
-                .unwrap_or(weight),
+                .unwrap_or(weight)
         };
     }
 

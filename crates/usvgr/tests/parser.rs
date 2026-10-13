@@ -909,8 +909,52 @@ mod numbers_set_from_code {
 
     #[test]
     fn font_weight_lighter_than_a_small_number() {
+        // CSS Fonts 4: `lighter` keeps a weight below 100.
         let doc = nested_weights(SvgAttributeValue::from(1.0), s("lighter"));
-        assert!(written(&doc).contains(r#"font-weight="100""#));
+        assert!(written(&doc).contains(r#"font-weight="1""#));
+    }
+
+    /// `bolder` and `lighter` follow the table of CSS Fonts 4, as browsers do (checked in
+    /// Chrome 154), and keywords are case-insensitive.
+    #[test]
+    fn font_weight_relative_keywords() {
+        let cases = [
+            (1.0, "bolder", 400),
+            (100.0, "bolder", 400),
+            (300.0, "bolder", 400),
+            (400.0, "bolder", 700),
+            (500.0, "bolder", 700),
+            (600.0, "bolder", 900),
+            (650.0, "bolder", 900),
+            (700.0, "bolder", 900),
+            (800.0, "bolder", 900),
+            (900.0, "bolder", 900),
+            (1000.0, "bolder", 1000),
+            (1.0, "lighter", 1),
+            (100.0, "lighter", 100),
+            (200.0, "lighter", 100),
+            (400.0, "lighter", 100),
+            (500.0, "lighter", 100),
+            (600.0, "lighter", 400),
+            (650.0, "lighter", 400),
+            (700.0, "lighter", 400),
+            (800.0, "lighter", 700),
+            (900.0, "lighter", 700),
+            (1000.0, "lighter", 700),
+            (300.0, "BOLD", 700),
+            (300.0, " Normal ", 400),
+            (300.0, " 650 ", 650),
+        ];
+        for (parent, child, expected) in cases {
+            let out = written(&nested_weights(SvgAttributeValue::from(parent), s(child)));
+            // The writer leaves out the default weight.
+            let weight = if expected == 400 {
+                !out.contains("font-weight=")
+            } else {
+                out.contains(&format!(r#"font-weight="{expected}""#))
+            };
+            assert!(weight, "{parent} {child:?} should be {expected}:\n{out}");
+        }
     }
 
     #[test]
