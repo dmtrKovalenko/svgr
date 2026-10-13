@@ -909,8 +909,52 @@ mod numbers_set_from_code {
 
     #[test]
     fn font_weight_lighter_than_a_small_number() {
+        // CSS Fonts 4: `lighter` keeps a weight below 100.
         let doc = nested_weights(SvgAttributeValue::from(1.0), s("lighter"));
-        assert!(written(&doc).contains(r#"font-weight="100""#));
+        assert!(written(&doc).contains(r#"font-weight="1""#));
+    }
+
+    /// `bolder` and `lighter` follow the table of CSS Fonts 4, as browsers do (checked in
+    /// Chrome 154), and keywords are case-insensitive.
+    #[test]
+    fn font_weight_relative_keywords() {
+        let cases = [
+            (1.0, "bolder", 400),
+            (100.0, "bolder", 400),
+            (300.0, "bolder", 400),
+            (400.0, "bolder", 700),
+            (500.0, "bolder", 700),
+            (600.0, "bolder", 900),
+            (650.0, "bolder", 900),
+            (700.0, "bolder", 900),
+            (800.0, "bolder", 900),
+            (900.0, "bolder", 900),
+            (1000.0, "bolder", 1000),
+            (1.0, "lighter", 1),
+            (100.0, "lighter", 100),
+            (200.0, "lighter", 100),
+            (400.0, "lighter", 100),
+            (500.0, "lighter", 100),
+            (600.0, "lighter", 400),
+            (650.0, "lighter", 400),
+            (700.0, "lighter", 400),
+            (800.0, "lighter", 700),
+            (900.0, "lighter", 700),
+            (1000.0, "lighter", 700),
+            (300.0, "BOLD", 700),
+            (300.0, " Normal ", 400),
+            (300.0, " 650 ", 650),
+        ];
+        for (parent, child, expected) in cases {
+            let out = written(&nested_weights(SvgAttributeValue::from(parent), s(child)));
+            // The writer leaves out the default weight.
+            let weight = if expected == 400 {
+                !out.contains("font-weight=")
+            } else {
+                out.contains(&format!(r#"font-weight="{expected}""#))
+            };
+            assert!(weight, "{parent} {child:?} should be {expected}:\n{out}");
+        }
     }
 
     #[test]
@@ -995,5 +1039,412 @@ mod numbers_set_from_code {
                 )],
             ))
         });
+    }
+
+    /// Writes the tree twice: with text kept, and with text converted to paths, so that both
+    /// the resolved attributes and their effect on the layout are compared.
+    fn written_with_layout(doc: &NestedSvgDocument) -> String {
+        let mut fontdb = usvgr::fontdb::Database::new();
+        for font in [
+            &include_bytes!("../../svgr/tests/fonts/NotoSans-Regular.ttf")[..],
+            &include_bytes!("../../svgr/tests/fonts/NotoSans-Bold.ttf")[..],
+            &include_bytes!("../../svgr/tests/fonts/NotoSans-Light.ttf")[..],
+            &include_bytes!("../../svgr/tests/fonts/RobotoFlex.subset.ttf")[..],
+        ] {
+            fontdb.load_font_data(font.to_vec());
+        }
+        let tree =
+            usvgr::Tree::from_nested_svgtree(doc, &usvgr::Options::default(), &fontdb).unwrap();
+        let mut out = tree.to_string(&usvgr::WriteOptions {
+            preserve_text: true,
+            ..Default::default()
+        });
+        out.push_str(&tree.to_string(&usvgr::WriteOptions::default()));
+        out
+    }
+
+    /// Builds the document of `template`, an SVG in which `?` marks the element under test.
+    /// That element gets `attr` instead of the template's value of it, or none for `None`.
+    fn from_template(
+        template: &str,
+        attr: Option<(AId, SvgAttributeValue<'static>)>,
+    ) -> NestedSvgDocument<'static> {
+        fn convert(
+            node: usvgr::roxmltree::Node,
+            attr: &Option<(AId, SvgAttributeValue<'static>)>,
+        ) -> Option<NestedNodeData<'static>> {
+            if node.is_text() {
+                let content = node.text()?;
+                return Some(NestedNodeData {
+                    kind: NestedNodeKind::Text(StringStorage::Owned(content.into())),
+                    attrs: Box::new([]),
+                    children: vec![],
+                    static_hash: None,
+                });
+            }
+            let mut attrs: Attrs = node
+                .attributes()
+                .filter_map(|a| Some((AId::from_str(a.name())?, a.value().to_owned().into())))
+                .collect();
+            if node.has_attribute("under-test") {
+                if let Some((aid, value)) = attr {
+                    attrs.retain(|(name, _)| name != aid);
+                    attrs.push((*aid, value.clone()));
+                }
+            }
+            let children = node.children().filter_map(|c| convert(c, attr)).collect();
+            Some(el(EId::from_str(node.tag_name().name())?, attrs, children))
+        }
+
+        let xml = template.replace('?', "under-test=''");
+        let xml = usvgr::roxmltree::Document::parse(&xml).unwrap();
+        NestedSvgDocument::from_nodes(vec![convert(xml.root_element(), &attr)])
+    }
+
+    macro_rules! doc {
+        ($body:expr) => {
+            concat!("<svg width='200' height='100'>", $body, "</svg>")
+        };
+    }
+
+    macro_rules! filtered {
+        ($primitive:literal) => {
+            doc!(concat!(
+                "<defs><filter id='f'>",
+                $primitive,
+                "</filter></defs><rect width='50' height='50' fill='red' filter='url(#f)'/>"
+            ))
+        };
+    }
+
+    macro_rules! painted {
+        ($server:literal) => {
+            doc!(concat!(
+                "<defs>",
+                $server,
+                "</defs><rect width='100' height='100' fill='url(#p)'/>"
+            ))
+        };
+    }
+
+    const RECT: &str = doc!(
+        "<rect ? x='10' y='10' width='60' height='40' fill='red' stroke='black' stroke-width='4'/>"
+    );
+    const ROTATED: &str =
+        doc!("<rect ? x='10' y='10' width='60' height='40' transform='rotate(30)'/>");
+    const STROKED: &str = doc!("<path ? d='M10 80 L50 10 L90 80' fill='none' stroke='black' stroke-width='10' stroke-dasharray='20 5'/>");
+    const CIRCLE: &str = doc!("<circle ? cx='50' cy='50' r='20'/>");
+    const ELLIPSE: &str = doc!("<ellipse ? cx='50' cy='50' rx='30' ry='20'/>");
+    const LINE: &str = doc!("<line ? x1='10' y1='10' x2='90' y2='90' stroke='black'/>");
+    const LINEAR: &str = painted!("<linearGradient ? id='p'><stop offset='0' stop-color='red'/><stop offset='1' stop-color='blue'/></linearGradient>");
+    const RADIAL: &str = painted!("<radialGradient ? id='p'><stop offset='0' stop-color='red'/><stop offset='1' stop-color='blue'/></radialGradient>");
+    const STOP: &str = painted!("<linearGradient id='p'><stop ? stop-color='red'/><stop offset='1' stop-color='blue'/></linearGradient>");
+    const PATTERN: &str = painted!("<pattern ? id='p' patternUnits='userSpaceOnUse' width='20' height='20'><circle cx='10' cy='10' r='5'/></pattern>");
+    const NESTED_SVG: &str = doc!(
+        "<svg ? viewBox='0 0 10 10' width='50' height='50'><rect width='10' height='5'/></svg>"
+    );
+    const USE: &str = doc!("<defs><symbol id='s' viewBox='0 0 10 10'><rect width='10' height='5'/></symbol></defs><use ? href='#s' width='50' height='50'/>");
+    const MARKER: &str = doc!("<defs><marker ? id='m' markerWidth='10' markerHeight='10' viewBox='0 0 10 10'><path d='M0 0 L10 5 L0 10z'/></marker></defs><path d='M10 50 L90 50' stroke='black' marker-end='url(#m)'/>");
+    const MASK: &str = doc!("<defs><mask ? id='m' maskUnits='userSpaceOnUse'><rect width='100' height='100' fill='white'/></mask></defs><rect width='80' height='80' mask='url(#m)'/>");
+    const LABEL: &str =
+        doc!("<text ? x='10' y='60' font-family='Noto Sans' font-size='40'>Ab cd</text>");
+    const VARIABLE_LABEL: &str =
+        doc!("<text ? x='10' y='60' font-family='Roboto Flex' font-size='40'>Ab cd</text>");
+    const KERNED_LABEL: &str =
+        doc!("<text ? x='10' y='60' font-family='Noto Sans' font-size='40'>AVAT To</text>");
+    const TSPAN: &str = doc!(
+        "<text x='10' y='60' font-family='Noto Sans' font-size='40'>Ab<tspan ?>cd</tspan></text>"
+    );
+    const TEXT_PATH: &str = doc!("<defs><path id='t' d='M10 80 Q100 0 190 80'/></defs><text font-family='Noto Sans' font-size='20'><textPath ? href='#t'>Ab cd</textPath></text>");
+    const FILTER_REGION: &str = doc!("<defs><filter ? id='f' filterUnits='userSpaceOnUse'><feGaussianBlur stdDeviation='2'/></filter></defs><rect width='50' height='50' filter='url(#f)'/>");
+    const BLUR: &str = filtered!("<feGaussianBlur ?/>");
+    const OFFSET: &str = filtered!("<feOffset ?/>");
+    const FLOOD: &str = filtered!("<feFlood ? flood-color='green'/>");
+    const DROP_SHADOW: &str = filtered!("<feDropShadow ?/>");
+    const MORPHOLOGY: &str = filtered!("<feMorphology ? operator='dilate'/>");
+    const TURBULENCE: &str = filtered!("<feTurbulence ? baseFrequency='0.05'/>");
+    const SATURATE: &str = filtered!("<feColorMatrix ? type='saturate'/>");
+    const LINEAR_TRANSFER: &str =
+        filtered!("<feComponentTransfer><feFuncR ? type='linear'/></feComponentTransfer>");
+    const GAMMA_TRANSFER: &str =
+        filtered!("<feComponentTransfer><feFuncR ? type='gamma'/></feComponentTransfer>");
+    const ARITHMETIC: &str = filtered!("<feComposite ? in2='SourceAlpha' operator='arithmetic' k1='0.1' k2='0.2' k3='0.3' k4='0.4'/>");
+    const CONVOLVE: &str =
+        filtered!("<feConvolveMatrix ? order='3' kernelMatrix='0 1 0 1 1 1 0 1 0'/>");
+    const CONVOLVE_ONE: &str = filtered!("<feConvolveMatrix ? order='1'/>");
+    const CONVOLVE_FOUR: &str = filtered!("<feConvolveMatrix ? kernelMatrix='1 0 0 1'/>");
+    const DISPLACEMENT: &str =
+        filtered!("<feDisplacementMap ? in2='SourceGraphic' xChannelSelector='R'/>");
+    const DIFFUSE: &str = filtered!(
+        "<feDiffuseLighting ? lighting-color='white'><feDistantLight/></feDiffuseLighting>"
+    );
+    const SPECULAR: &str = filtered!(
+        "<feSpecularLighting ? lighting-color='white'><feDistantLight/></feSpecularLighting>"
+    );
+    const DISTANT_LIGHT: &str = filtered!(
+        "<feDiffuseLighting lighting-color='white'><feDistantLight ?/></feDiffuseLighting>"
+    );
+    const POINT_LIGHT: &str = filtered!(
+        "<feDiffuseLighting lighting-color='white'><fePointLight ?/></feDiffuseLighting>"
+    );
+    const SPOT_LIGHT: &str = filtered!("<feDiffuseLighting lighting-color='white'><feSpotLight ? limitingConeAngle='30'/></feDiffuseLighting>");
+    const SPOT_LIGHT_CONE: &str =
+        filtered!("<feDiffuseLighting lighting-color='white'><feSpotLight ?/></feDiffuseLighting>");
+
+    /// Every attribute usvgr reads that accepts a plain number, in an element where it has an
+    /// effect, with a number different from its default.
+    const NUMBERS: &[(&str, f32, &str, &str)] = &[
+        ("opacity", 0.5, "0.5", RECT),
+        ("fill-opacity", 0.5, "0.5", RECT),
+        ("stroke-opacity", 0.5, "0.5", RECT),
+        ("stroke-width", 7.0, "7", RECT),
+        ("x", 20.0, "20", RECT),
+        ("y", 20.0, "20", RECT),
+        ("width", 30.0, "30", RECT),
+        ("height", 30.0, "30", RECT),
+        ("rx", 5.0, "5", RECT),
+        ("ry", 5.0, "5", RECT),
+        ("transform-origin", 40.0, "40", ROTATED),
+        ("stroke-miterlimit", 1.5, "1.5", STROKED),
+        ("stroke-dashoffset", 3.0, "3", STROKED),
+        ("stroke-dasharray", 4.0, "4", STROKED),
+        ("cx", 40.0, "40", CIRCLE),
+        ("cy", 40.0, "40", CIRCLE),
+        ("r", 30.0, "30", CIRCLE),
+        ("rx", 10.0, "10", ELLIPSE),
+        ("ry", 10.0, "10", ELLIPSE),
+        ("x1", 20.0, "20", LINE),
+        ("y1", 20.0, "20", LINE),
+        ("x2", 70.0, "70", LINE),
+        ("y2", 70.0, "70", LINE),
+        ("x1", 0.2, "0.2", LINEAR),
+        ("y1", 0.2, "0.2", LINEAR),
+        ("x2", 0.7, "0.7", LINEAR),
+        ("y2", 0.7, "0.7", LINEAR),
+        ("cx", 0.3, "0.3", RADIAL),
+        ("cy", 0.3, "0.3", RADIAL),
+        ("r", 0.3, "0.3", RADIAL),
+        ("fx", 0.4, "0.4", RADIAL),
+        ("fy", 0.4, "0.4", RADIAL),
+        ("fr", 0.1, "0.1", RADIAL),
+        ("offset", 0.3, "0.3", STOP),
+        ("stop-opacity", 0.5, "0.5", STOP),
+        ("x", 5.0, "5", PATTERN),
+        ("y", 5.0, "5", PATTERN),
+        ("width", 25.0, "25", PATTERN),
+        ("height", 25.0, "25", PATTERN),
+        ("x", 10.0, "10", NESTED_SVG),
+        ("y", 10.0, "10", NESTED_SVG),
+        ("width", 80.0, "80", NESTED_SVG),
+        ("height", 80.0, "80", NESTED_SVG),
+        ("x", 10.0, "10", USE),
+        ("y", 10.0, "10", USE),
+        ("width", 80.0, "80", USE),
+        ("height", 80.0, "80", USE),
+        ("markerWidth", 6.0, "6", MARKER),
+        ("markerHeight", 6.0, "6", MARKER),
+        ("refX", 2.0, "2", MARKER),
+        ("refY", 2.0, "2", MARKER),
+        ("orient", 45.0, "45", MARKER),
+        ("x", 20.0, "20", MASK),
+        ("y", 20.0, "20", MASK),
+        ("width", 30.0, "30", MASK),
+        ("height", 30.0, "30", MASK),
+        ("font-size", 30.0, "30", LABEL),
+        ("font-weight", 700.0, "700", LABEL),
+        ("font-weight", 300.0, "300", LABEL),
+        ("font-weight", 650.0, "650", LABEL),
+        ("font-weight", 650.0, "650", VARIABLE_LABEL),
+        ("font-weight", 550.5, "550.5", VARIABLE_LABEL),
+        ("letter-spacing", 3.0, "3", LABEL),
+        ("word-spacing", 9.0, "9", LABEL),
+        ("x", 20.0, "20", LABEL),
+        ("y", 70.0, "70", LABEL),
+        ("dx", 4.0, "4", LABEL),
+        ("dy", 4.0, "4", LABEL),
+        ("rotate", 20.0, "20", LABEL),
+        ("textLength", 150.0, "150", LABEL),
+        ("kerning", 0.0, "0", KERNED_LABEL),
+        ("baseline-shift", 6.0, "6", TSPAN),
+        ("startOffset", 20.0, "20", TEXT_PATH),
+        ("x", 5.0, "5", FILTER_REGION),
+        ("y", 5.0, "5", FILTER_REGION),
+        ("width", 40.0, "40", FILTER_REGION),
+        ("height", 40.0, "40", FILTER_REGION),
+        ("stdDeviation", 3.0, "3", BLUR),
+        ("x", 5.0, "5", BLUR),
+        ("y", 5.0, "5", BLUR),
+        ("width", 20.0, "20", BLUR),
+        ("height", 20.0, "20", BLUR),
+        ("dx", 5.0, "5", OFFSET),
+        ("dy", 5.0, "5", OFFSET),
+        ("flood-opacity", 0.5, "0.5", FLOOD),
+        ("dx", 5.0, "5", DROP_SHADOW),
+        ("dy", 5.0, "5", DROP_SHADOW),
+        ("stdDeviation", 3.0, "3", DROP_SHADOW),
+        ("flood-opacity", 0.5, "0.5", DROP_SHADOW),
+        ("radius", 2.0, "2", MORPHOLOGY),
+        ("baseFrequency", 0.2, "0.2", TURBULENCE),
+        ("numOctaves", 3.0, "3", TURBULENCE),
+        ("seed", 7.0, "7", TURBULENCE),
+        ("values", 0.5, "0.5", SATURATE),
+        ("slope", 0.5, "0.5", LINEAR_TRANSFER),
+        ("intercept", 0.5, "0.5", LINEAR_TRANSFER),
+        ("amplitude", 0.5, "0.5", GAMMA_TRANSFER),
+        ("exponent", 2.0, "2", GAMMA_TRANSFER),
+        ("offset", 0.5, "0.5", GAMMA_TRANSFER),
+        ("k1", 0.5, "0.5", ARITHMETIC),
+        ("k2", 0.5, "0.5", ARITHMETIC),
+        ("k3", 0.5, "0.5", ARITHMETIC),
+        ("k4", 0.5, "0.5", ARITHMETIC),
+        ("divisor", 2.0, "2", CONVOLVE),
+        ("bias", 0.5, "0.5", CONVOLVE),
+        ("targetX", 0.0, "0", CONVOLVE),
+        ("targetY", 0.0, "0", CONVOLVE),
+        ("kernelMatrix", 2.0, "2", CONVOLVE_ONE),
+        ("order", 2.0, "2", CONVOLVE_FOUR),
+        ("scale", 10.0, "10", DISPLACEMENT),
+        ("surfaceScale", 3.0, "3", DIFFUSE),
+        ("diffuseConstant", 2.0, "2", DIFFUSE),
+        ("specularConstant", 2.0, "2", SPECULAR),
+        ("specularExponent", 5.0, "5", SPECULAR),
+        ("surfaceScale", 3.0, "3", SPECULAR),
+        ("azimuth", 45.0, "45", DISTANT_LIGHT),
+        ("elevation", 45.0, "45", DISTANT_LIGHT),
+        ("x", 10.0, "10", POINT_LIGHT),
+        ("y", 10.0, "10", POINT_LIGHT),
+        ("z", 10.0, "10", POINT_LIGHT),
+        ("x", 10.0, "10", SPOT_LIGHT),
+        ("y", 10.0, "10", SPOT_LIGHT),
+        ("z", 10.0, "10", SPOT_LIGHT),
+        ("pointsAtX", 10.0, "10", SPOT_LIGHT),
+        ("pointsAtY", 10.0, "10", SPOT_LIGHT),
+        ("pointsAtZ", 10.0, "10", SPOT_LIGHT),
+        ("specularExponent", 5.0, "5", SPOT_LIGHT),
+        ("limitingConeAngle", 20.0, "20", SPOT_LIGHT_CONE),
+    ];
+
+    /// Every attribute usvgr reads that accepts a length with a unit. svgr-macro parses such a
+    /// written value at compile time into `Length`, which has no text.
+    const LENGTHS: &[(&str, &str, &str)] = &[
+        ("opacity", "50%", RECT),
+        ("fill-opacity", "50%", RECT),
+        ("stroke-opacity", "50%", RECT),
+        ("stroke-width", "7px", RECT),
+        ("x", "20%", RECT),
+        ("width", "30mm", RECT),
+        ("rx", "5px", RECT),
+        ("transform-origin", "40px", ROTATED),
+        ("transform-origin", "50%", ROTATED),
+        ("stroke-dashoffset", "3px", STROKED),
+        ("stroke-dasharray", "4px", STROKED),
+        ("cx", "40%", CIRCLE),
+        ("r", "30px", CIRCLE),
+        ("x2", "70%", LINE),
+        ("x1", "20%", LINEAR),
+        ("cx", "30%", RADIAL),
+        ("fr", "10%", RADIAL),
+        ("offset", "30%", STOP),
+        ("stop-opacity", "50%", STOP),
+        ("width", "25px", PATTERN),
+        ("x", "10px", NESTED_SVG),
+        ("width", "80%", NESTED_SVG),
+        ("x", "10px", USE),
+        ("markerWidth", "6px", MARKER),
+        ("refX", "2px", MARKER),
+        ("x", "10%", MASK),
+        ("font-size", "150%", LABEL),
+        ("font-size", "2em", LABEL),
+        ("letter-spacing", "3px", LABEL),
+        ("word-spacing", "0.5em", LABEL),
+        ("x", "20px", LABEL),
+        ("dx", "4px", LABEL),
+        ("textLength", "150px", LABEL),
+        ("kerning", "0px", KERNED_LABEL),
+        ("baseline-shift", "20%", TSPAN),
+        ("baseline-shift", "6px", TSPAN),
+        ("startOffset", "20%", TEXT_PATH),
+        ("x", "10%", FILTER_REGION),
+        ("width", "5px", BLUR),
+        ("flood-opacity", "50%", FLOOD),
+    ];
+
+    /// Checks that `text` written in the SVG has an effect, and that each of `parsed` renders
+    /// the same. Returns what differs.
+    fn same_as_text(
+        name: &str,
+        text: &'static str,
+        template: &str,
+        parsed: &[(&str, SvgAttributeValue<'static>)],
+    ) -> Vec<String> {
+        let aid = AId::from_str(name).unwrap();
+        let case = format!("{name}={text} in {template}");
+        let runtime = written_with_layout(&from_template(template, Some((aid, s(text)))));
+        if runtime == written_with_layout(&from_template(template, None)) {
+            return vec![format!("{case}: the written value has no effect")];
+        }
+        parsed
+            .iter()
+            .filter(|(_, value)| {
+                written_with_layout(&from_template(template, Some((aid, value.clone())))) != runtime
+            })
+            .map(|(form, _)| format!("{case}: the {form} differs from the text"))
+            .collect()
+    }
+
+    /// The same number renders the same whether it is written in the SVG (runtime parsing),
+    /// parsed at compile time, or set from code.
+    #[test]
+    fn every_number_attribute() {
+        let failures: Vec<_> = NUMBERS
+            .iter()
+            .flat_map(|&(name, number, text, template)| {
+                same_as_text(
+                    name,
+                    text,
+                    template,
+                    &[
+                        (
+                            "compile-time number",
+                            SvgAttributeValue::Float(number, StringStorage::Borrowed(text)),
+                        ),
+                        ("number from code", SvgAttributeValue::from(number)),
+                    ],
+                )
+            })
+            .collect();
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+    }
+
+    /// A weight outside 1 to 1000 is invalid in CSS, written or set from code, and keeps the
+    /// inherited weight.
+    #[test]
+    fn font_weight_out_of_range() {
+        let inherited = written_with_layout(&from_template(LABEL, None));
+        for (number, text) in [(1500.0, "1500"), (0.0, "0"), (-700.0, "-700"), (0.5, "0.5")] {
+            for value in [s(text), SvgAttributeValue::from(number)] {
+                let doc = from_template(LABEL, Some((AId::FontWeight, value)));
+                assert_eq!(written_with_layout(&doc), inherited, "font-weight {text}");
+            }
+        }
+    }
+
+    /// A length written in the SVG renders the same as the one svgr-macro parses at compile
+    /// time.
+    #[test]
+    fn every_length_attribute() {
+        let failures: Vec<_> = LENGTHS
+            .iter()
+            .flat_map(|&(name, text, template)| {
+                let length = text.parse().unwrap();
+                same_as_text(
+                    name,
+                    text,
+                    template,
+                    &[("compile-time length", SvgAttributeValue::Length(length))],
+                )
+            })
+            .collect();
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
 }

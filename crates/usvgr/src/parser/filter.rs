@@ -664,10 +664,11 @@ fn convert_convolve_matrix(fe: SvgNode, primitives: &[Primitive]) -> Option<Kind
 
     let mut order_x = 3;
     let mut order_y = 3;
-    if let Some(value) = fe.attribute::<&str>(AId::Order) {
-        let mut s = svgrtypes::NumberListParser::from(value);
-        let x = s.next().and_then(|a| a.ok()).map(|n| n as i32).unwrap_or(3);
-        let y = s.next().and_then(|a| a.ok()).map(|n| n as i32).unwrap_or(x);
+    // A list, so that a number set from code, which has no text, is read too.
+    if let Some(value) = fe.attribute::<Vec<f32>>(AId::Order) {
+        let mut s = value.into_iter();
+        let x = s.next().map(|n| n as i32).unwrap_or(3);
+        let y = s.next().map(|n| n as i32).unwrap_or(x);
         if x > 0 && y > 0 {
             order_x = x as u32;
             order_y = y as u32;
