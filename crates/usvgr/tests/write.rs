@@ -66,6 +66,11 @@ fn text_simple_case() {
 }
 
 #[test]
+fn clip_path_with_transform() {
+    resave("clip-path-with-transform");
+}
+
+#[test]
 fn preserve_id_filter() {
     resave("preserve-id-filter");
 }
@@ -193,4 +198,9 @@ fn preserve_text_with_complex_text_decoration() {
 #[test]
 fn preserve_text_with_nested_baseline_shift() {
     resave_with_text("preserve-text-with-nested-baseline-shift");
+}
+
+#[test]
+fn optimize_paths_without_markers() {
+    resave("optimize-paths-without-markers");
 }

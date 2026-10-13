@@ -54,22 +54,25 @@ and can focus just on the rendering part.
 #[doc(hidden)]
 pub mod hashers;
 mod parser;
+#[cfg(feature = "text")]
+mod text;
 mod tree;
+#[cfg(feature = "writer")]
 mod writer;
 
 pub use parser::*;
+#[cfg(feature = "text")]
+pub use text::*;
 pub use tree::*;
 
 pub use roxmltree;
 
 #[cfg(feature = "text")]
-mod text_to_paths;
-#[cfg(feature = "text")]
 pub use fontdb;
 
 pub use ahash;
 pub use lru;
-#[cfg(feature = "text")]
-pub use text_to_paths::UsvgrTextOutlineCache;
+#[cfg(feature = "writer")]
 pub use writer::WriteOptions;
+#[cfg(feature = "writer")]
 pub use xmlwriter::Indent;

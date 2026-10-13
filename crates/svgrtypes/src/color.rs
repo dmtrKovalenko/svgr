@@ -129,7 +129,7 @@ impl std::str::FromStr for Color {
     }
 }
 
-impl<'a> Stream<'a> {
+impl Stream<'_> {
     /// Tries to parse a color, but doesn't advance on error.
     pub fn try_parse_color(&mut self) -> Option<Color> {
         let mut s = *self;
@@ -199,23 +199,20 @@ impl<'a> Stream<'a> {
                 self.parse_list_separator();
 
                 if is_percent {
-                    fn from_percent(v: f64) -> u8 {
-                        let n = (v * 255.0).round() as i32;
-                        bound(0, n, 255) as u8
-                    }
-
-                    color.red = from_percent(value / 100.0);
-                    color.green = from_percent(self.parse_list_number_or_percent()?);
-                    color.blue = from_percent(self.parse_list_number_or_percent()?);
+                    // The division and multiply are explicitly not collapsed, to ensure the red
+                    // component has the same rounding behavior as the green and blue components.
+                    color.red = ((value / 100.0) * 255.0).round() as u8;
+                    color.green = (self.parse_list_number_or_percent()? * 255.0).round() as u8;
+                    color.blue = (self.parse_list_number_or_percent()? * 255.0).round() as u8;
                 } else {
-                    color.red = f64_bound(0.0, (value.round() as i32).into(), 255.0) as u8;
-                    color.green = f64_bound(0.0, self.parse_list_number()?.round(), 255.0) as u8;
-                    color.blue = f64_bound(0.0, self.parse_list_number()?.round(), 255.0) as u8;
+                    color.red = value.round() as u8;
+                    color.green = self.parse_list_number()?.round() as u8;
+                    color.blue = self.parse_list_number()?.round() as u8;
                 }
 
                 self.skip_spaces();
                 if !self.starts_with(b")") {
-                    color.alpha = (f64_bound(0.0, self.parse_list_number()?, 1.0) * 255.0) as u8;
+                    color.alpha = (self.parse_list_number()? * 255.0).round() as u8;
                 }
 
                 self.skip_spaces();
@@ -223,8 +220,8 @@ impl<'a> Stream<'a> {
             } else if name == "hsl" || name == "hsla" {
                 self.consume_byte(b'(')?;
 
-                let mut hue = self.parse_list_integer()?;
-                hue = ((hue % 360) + 360) % 360;
+                let mut hue = self.parse_list_number()?;
+                hue = ((hue % 360.0) + 360.0) % 360.0;
 
                 let saturation = f64_bound(0.0, self.parse_list_number_or_percent()?, 1.0);
                 let lightness = f64_bound(0.0, self.parse_list_number_or_percent()?, 1.0);
@@ -233,7 +230,7 @@ impl<'a> Stream<'a> {
 
                 self.skip_spaces();
                 if !self.starts_with(b")") {
-                    color.alpha = (f64_bound(0.0, self.parse_list_number()?, 1.0) * 255.0) as u8;
+                    color.alpha = (self.parse_list_number()? * 255.0).round() as u8;
                 }
 
                 self.skip_spaces();
@@ -291,9 +288,9 @@ fn hsl_to_rgb(hue: f32, saturation: f32, lightness: f32) -> Color {
     let green = hue_to_rgb(t1, t2, hue);
     let blue = hue_to_rgb(t1, t2, hue - 2.0);
     Color::new_rgb(
-        (red * 255.0) as u8,
-        (green * 255.0) as u8,
-        (blue * 255.0) as u8,
+        (red * 255.0).round() as u8,
+        (green * 255.0).round() as u8,
+        (blue * 255.0).round() as u8,
     )
 }
 
@@ -317,16 +314,9 @@ fn hue_to_rgb(t1: f32, t2: f32, mut hue: f32) -> f32 {
 }
 
 #[inline]
-fn bound<T: Ord>(min: T, val: T, max: T) -> T {
-    std::cmp::max(min, std::cmp::min(max, val))
-}
-
-#[inline]
 fn f64_bound(min: f64, val: f64, max: f64) -> f64 {
-    debug_assert!(min.is_finite());
     debug_assert!(val.is_finite());
-    debug_assert!(max.is_finite());
-    val.max(min).min(max)
+    val.clamp(min, max)
 }
 
 #[rustfmt::skip]
@@ -455,7 +445,7 @@ mod tests {
     test!(
         rgb_numeric_all_float_with_alpha,
         "rgb(0.0, 129.82, 231.092, 0.5)",
-        Color::new_rgba(0, 130, 231, 127)
+        Color::new_rgba(0, 130, 231, 128)
     );
 
     test!(
@@ -503,7 +493,7 @@ mod tests {
     test!(
         rgba_half,
         "rgba(10, 20, 30, 0.5)",
-        Color::new_rgba(10, 20, 30, 127)
+        Color::new_rgba(10, 20, 30, 128)
     );
 
     test!(
@@ -533,13 +523,13 @@ mod tests {
     test!(
         rgb_with_alpha,
         "rgb(10, 20, 30, 0.5)",
-        Color::new_rgba(10, 20, 30, 127)
+        Color::new_rgba(10, 20, 30, 128)
     );
 
     test!(
         hsl_green,
         "hsl(120, 100%, 75%)",
-        Color::new_rgba(127, 255, 127, 255)
+        Color::new_rgba(128, 255, 128, 255)
     );
 
     test!(
@@ -563,13 +553,31 @@ mod tests {
     test!(
         hsla_green,
         "hsla(120, 100%, 75%, 0.5)",
-        Color::new_rgba(127, 255, 127, 127)
+        Color::new_rgba(128, 255, 128, 128)
     );
 
     test!(
         hsl_with_alpha,
         "hsl(120, 100%, 75%, 0.5)",
-        Color::new_rgba(127, 255, 127, 127)
+        Color::new_rgba(128, 255, 128, 128)
+    );
+
+    test!(
+        hsl_to_rgb_red_round_up,
+        "hsl(230, 57%, 54%)",
+        Color::new_rgba(71, 93, 205, 255)
+    );
+
+    test!(
+        hsl_with_hue_float,
+        "hsl(120.152, 100%, 75%)",
+        Color::new_rgba(128, 255, 128, 255)
+    );
+
+    test!(
+        hsla_with_hue_float,
+        "hsla(120.152, 100%, 75%, 0.5)",
+        Color::new_rgba(128, 255, 128, 128)
     );
 
     macro_rules! test_err {

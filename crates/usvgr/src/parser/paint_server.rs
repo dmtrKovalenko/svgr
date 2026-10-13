@@ -55,7 +55,8 @@ fn convert_linear(node: SvgNode, state: &converter::State) -> Option<ServerOrCol
     }
 
     let units = convert_units(node, AId::GradientUnits, Units::ObjectBoundingBox);
-    let transform = node.resolve_transform(AId::GradientTransform, state);
+    let transform =
+        resolve_attr(node, AId::GradientTransform).resolve_transform(AId::GradientTransform, state);
 
     let gradient = LinearGradient {
         x1: resolve_number(node, AId::X1, units, state, Length::zero()),
@@ -93,6 +94,7 @@ fn convert_radial(node: SvgNode, state: &converter::State) -> Option<ServerOrCol
 
     let units = convert_units(node, AId::GradientUnits, Units::ObjectBoundingBox);
     let r = resolve_number(node, AId::R, units, state, Length::new(50.0, Unit::Percent));
+    let fr = resolve_number(node, AId::Fr, units, state, Length::zero());
 
     // 'A value of zero will cause the area to be painted as a single color
     // using the color and opacity of the last gradient stop.'
@@ -123,7 +125,8 @@ fn convert_radial(node: SvgNode, state: &converter::State) -> Option<ServerOrCol
     );
     let fx = resolve_number(node, AId::Fx, units, state, Length::new_number(cx as f64));
     let fy = resolve_number(node, AId::Fy, units, state, Length::new_number(cy as f64));
-    let transform = node.resolve_transform(AId::GradientTransform, state);
+    let transform =
+        resolve_attr(node, AId::GradientTransform).resolve_transform(AId::GradientTransform, state);
 
     let gradient = RadialGradient {
         cx,
@@ -131,6 +134,7 @@ fn convert_radial(node: SvgNode, state: &converter::State) -> Option<ServerOrCol
         r: PositiveF32::new(r).unwrap(),
         fx,
         fy,
+        fr: PositiveF32::new(fr).unwrap_or(PositiveF32::ZERO),
         base: BaseGradient {
             id,
             units,
@@ -167,7 +171,8 @@ fn convert_pattern(
     let units = convert_units(node, AId::PatternUnits, Units::ObjectBoundingBox);
     let content_units = convert_units(node, AId::PatternContentUnits, Units::UserSpaceOnUse);
 
-    let transform = node.resolve_transform(AId::PatternTransform, state);
+    let transform =
+        resolve_attr(node, AId::PatternTransform).resolve_transform(AId::PatternTransform, state);
 
     let rect = NonZeroRect::from_xywh(
         resolve_number(node, AId::X, units, state, Length::zero()),
@@ -458,6 +463,7 @@ fn resolve_rg_attr<'a, 'input>(node: SvgNode<'a, 'input>, name: AId) -> SvgNode<
             | (AId::R,  EId::RadialGradient)
             | (AId::Fx, EId::RadialGradient)
             | (AId::Fy, EId::RadialGradient)
+            | (AId::Fr, EId::RadialGradient)
             // Other attributes can be resolved
             // from any kind of gradient.
             | (AId::GradientUnits, EId::LinearGradient)
@@ -663,6 +669,12 @@ fn node_to_user_coordinates(
             // paint servers.
             let bbox = text.bounding_box;
 
+            // We need to update three things:
+            // 1. The fills/strokes of the original elements in the usvg tree.
+            // 2. The fills/strokes of the layouted elements of the text.
+            // 3. The fills/strokes of the outlined text.
+
+            // 1.
             for chunk in &mut text.chunks {
                 for span in &mut chunk.spans {
                     process_fill(
@@ -687,6 +699,59 @@ fn node_to_user_coordinates(
                 }
             }
 
+            // 2.
+            #[cfg(feature = "text")]
+            for span in &mut text.layouted {
+                process_fill(
+                    &mut span.fill,
+                    text.abs_transform,
+                    context_transform,
+                    context_bbox,
+                    bbox,
+                    cache,
+                );
+                process_stroke(
+                    &mut span.stroke,
+                    text.abs_transform,
+                    context_transform,
+                    context_bbox,
+                    bbox,
+                    cache,
+                );
+
+                let mut process_decoration = |path: &mut Path| {
+                    process_fill(
+                        &mut path.fill,
+                        text.abs_transform,
+                        context_transform,
+                        context_bbox,
+                        bbox,
+                        cache,
+                    );
+                    process_stroke(
+                        &mut path.stroke,
+                        text.abs_transform,
+                        context_transform,
+                        context_bbox,
+                        bbox,
+                        cache,
+                    );
+                };
+
+                if let Some(ref mut path) = span.overline {
+                    process_decoration(path);
+                }
+
+                if let Some(ref mut path) = span.underline {
+                    process_decoration(path);
+                }
+
+                if let Some(ref mut path) = span.line_through {
+                    process_decoration(path);
+                }
+            }
+
+            // 3.
             update_paint_servers(
                 &mut text.flattened,
                 context_transform,
@@ -798,6 +863,7 @@ fn process_context_paint(
                 r: rg.r,
                 fx: rg.fx,
                 fy: rg.fy,
+                fr: rg.fr,
                 base: BaseGradient {
                     id: cache.gen_radial_gradient_id(),
                     units: rg.units,
@@ -932,6 +998,7 @@ impl Paint {
                         r: rg.r,
                         fx: rg.fx,
                         fy: rg.fy,
+                        fr: rg.fr,
                         base: BaseGradient {
                             id: cache.gen_radial_gradient_id(),
                             units: Units::UserSpaceOnUse,

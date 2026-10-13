@@ -7,6 +7,8 @@ use std::sync::Arc;
 use strict_num::NonZeroPositiveF32;
 pub use svgrtypes::FontFamily;
 
+#[cfg(feature = "text")]
+use crate::layout::Span;
 use crate::{
     Fill, Group, NonEmptyString, PaintOrder, Rect, Stroke, TextRendering, Transform, Visibility,
 };
@@ -33,6 +35,73 @@ impl Default for FontStretch {
     }
 }
 
+#[cfg(feature = "text")]
+impl From<fontdb::Stretch> for FontStretch {
+    fn from(stretch: fontdb::Stretch) -> Self {
+        match stretch {
+            fontdb::Stretch::UltraCondensed => FontStretch::UltraCondensed,
+            fontdb::Stretch::ExtraCondensed => FontStretch::ExtraCondensed,
+            fontdb::Stretch::Condensed => FontStretch::Condensed,
+            fontdb::Stretch::SemiCondensed => FontStretch::SemiCondensed,
+            fontdb::Stretch::Normal => FontStretch::Normal,
+            fontdb::Stretch::SemiExpanded => FontStretch::SemiExpanded,
+            fontdb::Stretch::Expanded => FontStretch::Expanded,
+            fontdb::Stretch::ExtraExpanded => FontStretch::ExtraExpanded,
+            fontdb::Stretch::UltraExpanded => FontStretch::UltraExpanded,
+        }
+    }
+}
+
+#[cfg(feature = "text")]
+impl From<FontStretch> for fontdb::Stretch {
+    fn from(stretch: FontStretch) -> Self {
+        match stretch {
+            FontStretch::UltraCondensed => fontdb::Stretch::UltraCondensed,
+            FontStretch::ExtraCondensed => fontdb::Stretch::ExtraCondensed,
+            FontStretch::Condensed => fontdb::Stretch::Condensed,
+            FontStretch::SemiCondensed => fontdb::Stretch::SemiCondensed,
+            FontStretch::Normal => fontdb::Stretch::Normal,
+            FontStretch::SemiExpanded => fontdb::Stretch::SemiExpanded,
+            FontStretch::Expanded => fontdb::Stretch::Expanded,
+            FontStretch::ExtraExpanded => fontdb::Stretch::ExtraExpanded,
+            FontStretch::UltraExpanded => fontdb::Stretch::UltraExpanded,
+        }
+    }
+}
+
+/// A font variation axis setting.
+///
+/// Used for variable fonts to specify axis values like weight, width, etc.
+#[derive(Clone, Copy, Debug)]
+pub struct FontVariation {
+    /// The 4-byte axis tag (e.g., b"wght" for weight).
+    pub tag: [u8; 4],
+    /// The axis value.
+    pub value: f32,
+}
+
+impl FontVariation {
+    /// Creates a new font variation.
+    pub fn new(tag: [u8; 4], value: f32) -> Self {
+        Self { tag, value }
+    }
+}
+
+impl PartialEq for FontVariation {
+    fn eq(&self, other: &Self) -> bool {
+        self.tag == other.tag && self.value.to_bits() == other.value.to_bits()
+    }
+}
+
+impl Eq for FontVariation {}
+
+impl std::hash::Hash for FontVariation {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.tag.hash(state);
+        self.value.to_bits().hash(state);
+    }
+}
+
 /// A font style property.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum FontStyle {
@@ -51,6 +120,28 @@ impl Default for FontStyle {
     }
 }
 
+#[cfg(feature = "text")]
+impl From<fontdb::Style> for FontStyle {
+    fn from(style: fontdb::Style) -> Self {
+        match style {
+            fontdb::Style::Normal => FontStyle::Normal,
+            fontdb::Style::Italic => FontStyle::Italic,
+            fontdb::Style::Oblique => FontStyle::Oblique,
+        }
+    }
+}
+
+#[cfg(feature = "text")]
+impl From<FontStyle> for fontdb::Style {
+    fn from(style: FontStyle) -> Self {
+        match style {
+            FontStyle::Normal => fontdb::Style::Normal,
+            FontStyle::Italic => fontdb::Style::Italic,
+            FontStyle::Oblique => fontdb::Style::Oblique,
+        }
+    }
+}
+
 /// Text font properties.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct Font {
@@ -58,6 +149,7 @@ pub struct Font {
     pub(crate) style: FontStyle,
     pub(crate) stretch: FontStretch,
     pub(crate) weight: u16,
+    pub(crate) variations: Vec<FontVariation>,
 }
 
 impl Font {
@@ -81,6 +173,11 @@ impl Font {
     /// A font width.
     pub fn weight(&self) -> u16 {
         self.weight
+    }
+
+    /// Font variation settings for variable fonts.
+    pub fn variations(&self) -> &[FontVariation] {
+        &self.variations
     }
 }
 
@@ -174,6 +271,24 @@ impl Default for LengthAdjust {
     }
 }
 
+/// A font optical sizing property.
+///
+/// Controls automatic adjustment of the `opsz` axis in variable fonts
+/// based on font size. Matches CSS `font-optical-sizing`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum FontOpticalSizing {
+    /// Automatically set `opsz` to match font size (browser default).
+    Auto,
+    /// Do not automatically adjust `opsz`.
+    None,
+}
+
+impl Default for FontOpticalSizing {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
 /// A text span decoration style.
 ///
 /// In SVG, text decoration and text it's applied to can have different styles.
@@ -237,6 +352,7 @@ pub struct TextSpan {
     pub(crate) font_size: NonZeroPositiveF32,
     pub(crate) small_caps: bool,
     pub(crate) apply_kerning: bool,
+    pub(crate) font_optical_sizing: FontOpticalSizing,
     pub(crate) decoration: TextDecoration,
     pub(crate) dominant_baseline: DominantBaseline,
     pub(crate) alignment_baseline: AlignmentBaseline,
@@ -259,6 +375,7 @@ impl std::hash::Hash for TextSpan {
         self.font_size.hash(state);
         self.small_caps.hash(state);
         self.apply_kerning.hash(state);
+        self.font_optical_sizing.hash(state);
         self.decoration.hash(state);
         self.dominant_baseline.hash(state);
         self.alignment_baseline.hash(state);
@@ -323,6 +440,15 @@ impl TextSpan {
     /// Supports both `kerning` and `font-kerning` properties.
     pub fn apply_kerning(&self) -> bool {
         self.apply_kerning
+    }
+
+    /// Font optical sizing mode.
+    ///
+    /// When `Auto` (default), the `opsz` axis will be automatically set
+    /// to match the font size for variable fonts that support it.
+    /// This matches the CSS `font-optical-sizing: auto` behavior.
+    pub fn font_optical_sizing(&self) -> FontOpticalSizing {
+        self.font_optical_sizing
     }
 
     /// A span decorations.
@@ -524,6 +650,8 @@ pub struct Text {
     /// Pre-computed static hash for cache optimization.
     /// Propagated to the flattened Group after text-to-paths conversion.
     pub(crate) static_hash: Option<u64>,
+    #[cfg(feature = "text")]
+    pub(crate) layouted: Vec<Span>,
 }
 
 impl std::hash::Hash for Text {
@@ -614,7 +742,7 @@ impl Text {
 
     /// Element's absolute transform.
     ///
-    /// Contains all ancestors transforms excluding element's transform.
+    /// Contains all ancestors transforms including elements's transform.
     ///
     /// Note that this is not the relative transform present in SVG.
     /// The SVG one would be set only on groups.
@@ -660,9 +788,32 @@ impl Text {
 
     /// Text converted into paths, ready to render.
     ///
-    /// Returns `None` when the `text` build feature was disabled.
+    /// Note that this is only a
+    /// "best-effort" attempt: The text will be converted into group/paths/image
+    /// primitives, so that they can be rendered with the existing infrastructure.
+    /// This process is in general lossless and should lead to correct output, with
+    /// two notable exceptions:
+    /// 1. For glyphs based on the `SVG` table, only glyphs that are pure SVG 1.1/2.0
+    /// are supported. Glyphs that make use of features in the OpenType specification
+    /// that are not part of the original SVG specification are not supported.
+    /// 2. For glyphs based on the `COLR` table, there are a certain number of features
+    /// that are not (correctly) supported, such as conical
+    /// gradients, certain gradient transforms and some blend modes. But this shouldn't
+    /// cause any issues in 95% of the cases, as most of those are edge cases.
+    /// If the two above are not acceptable, then you will need to implement your own
+    /// glyph rendering logic based on the layouted glyphs (see the `layouted` method).
     pub fn flattened(&self) -> &Group {
         &self.flattened
+    }
+
+    /// The positioned glyphs and decoration spans of the text.
+    ///
+    /// This should only be used if you need more low-level access
+    /// to the glyphs that make up the text. If you just need the
+    /// outlines of the text, you should use `flattened` instead.
+    #[cfg(feature = "text")]
+    pub fn layouted(&self) -> &[Span] {
+        &self.layouted
     }
 
     pub(crate) fn subroots(&self, f: &mut dyn FnMut(&Group)) {

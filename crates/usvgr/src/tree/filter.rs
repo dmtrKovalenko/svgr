@@ -844,10 +844,18 @@ pub struct Image {
 
 impl std::hash::Hash for Image {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // do not hash the data
+        // Do not hash the raw image data, `original_href` identifies it.
         self.original_href.hash(state);
         self.aspect.hash(state);
         self.rendering_mode.hash(state);
+        // The referenced/wrapped content affects rendering, so it must be part of the hash.
+        match self.data {
+            ImageKind::Image(_) => 0u8.hash(state),
+            ImageKind::Use(ref group) => {
+                1u8.hash(state);
+                group.hash(state);
+            }
+        }
     }
 }
 
@@ -865,6 +873,10 @@ impl Image {
     }
 
     /// Image data.
+    ///
+    /// The parser always produces [`ImageKind::Use`]: an `feImage` that references
+    /// an external/embedded image is represented as a group containing an `Image` node
+    /// sized to the primitive subregion.
     pub fn data(&self) -> &ImageKind {
         &self.data
     }
@@ -874,6 +886,8 @@ impl Image {
 #[derive(Clone, Debug)]
 pub enum ImageKind {
     /// An image data.
+    ///
+    /// Not produced by the parser anymore, kept for API compatibility.
     Image(crate::ImageKind),
 
     /// An SVG node.

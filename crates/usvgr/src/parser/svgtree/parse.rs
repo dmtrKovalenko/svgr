@@ -23,7 +23,18 @@ const XML_NAMESPACE_NS: &str = "http://www.w3.org/XML/1998/namespace";
 impl<'input> Document<'input> {
     /// Parses a [`Document`] from a [`roxmltree::Document`].
     pub fn parse_tree(xml: &roxmltree::Document<'input>) -> Result<Document<'input>, Error> {
-        parse(xml)
+        parse(xml, None)
+    }
+
+    /// Parses a [`Document`] from a [`roxmltree::Document`] with an optional
+    /// injected CSS style sheet.
+    ///
+    /// Injected style sheets do not override the document's own style sheets.
+    pub fn parse_tree_with_style_sheet(
+        xml: &roxmltree::Document<'input>,
+        injected_stylesheet: Option<&'input str>,
+    ) -> Result<Document<'input>, Error> {
+        parse(xml, injected_stylesheet)
     }
 
     pub(crate) fn append(&mut self, parent_id: NodeId, kind: NodeKind) -> NodeId {
@@ -71,7 +82,10 @@ impl<'input> Document<'input> {
     }
 }
 
-fn parse<'input>(xml: &roxmltree::Document<'input>) -> Result<Document<'input>, Error> {
+fn parse<'input>(
+    xml: &roxmltree::Document<'input>,
+    injected_stylesheet: Option<&'input str>,
+) -> Result<Document<'input>, Error> {
     let mut doc = Document {
         nodes: Vec::new(),
         attrs: Vec::new(),
@@ -98,7 +112,7 @@ fn parse<'input>(xml: &roxmltree::Document<'input>) -> Result<Document<'input>, 
         fframes_data: crate::FframesData::default(),
     });
 
-    let style_sheet = resolve_css(xml);
+    let style_sheet = resolve_css(xml, injected_stylesheet);
 
     parse_xml_node_children(
         xml.root(),
@@ -237,6 +251,7 @@ pub(crate) fn parse_svg_element<'input>(
 ) -> Result<NodeId, Error> {
     let attrs_start_idx = doc.attrs.len();
     let mut fframes_data = Vec::new();
+    let mut href_idx: Option<usize> = None;
 
     // Copy presentational attributes first.
     for attr in xml_node.attributes() {
@@ -264,12 +279,51 @@ pub(crate) fn parse_svg_element<'input>(
         // For some reason those properties are allowed only inside a `style` attribute and CSS.
         if matches!(aid, AId::MixBlendMode | AId::Isolation | AId::FontKerning) {
             continue;
+        } else if aid == AId::ImageRendering
+            && matches!(
+                attr.value(),
+                "smooth" | "high-quality" | "crisp-edges" | "pixelated"
+            )
+        {
+            continue;
         }
 
-        append_attribute(parent_id, tag_name, aid, attr.value_storage().clone(), doc);
+        // SVG 2: when both `href` and `xlink:href` are present, the unprefixed
+        // `href` takes precedence and the XLink one must be ignored, regardless
+        // of their order in the source document.
+        // https://www.w3.org/TR/SVG2/linking.html#XLinkRefAttrs
+        if aid == AId::Href {
+            let is_unprefixed = attr.namespace().is_none();
+            let is_xlink = attr.namespace() == Some(XLINK_NS);
+            if !is_unprefixed && !is_xlink {
+                continue;
+            }
+
+            if let Some(idx) = href_idx {
+                // An `href` was already stored. Only an unprefixed `href` is
+                // allowed to override it; an `xlink:href` is ignored.
+                if is_unprefixed {
+                    doc.attrs[idx].value =
+                        SvgAttributeValue::StringStorage(attr.value_storage().clone());
+                }
+                continue;
+            }
+        }
+
+        let added = append_attribute(parent_id, tag_name, aid, attr.value_storage().clone(), doc);
+        if added && aid == AId::Href {
+            href_idx = Some(doc.attrs.len() - 1);
+        }
     }
 
-    let mut insert_attribute = |aid, value: &str| {
+    // Importance (`!important`) of the attributes of the current element,
+    // parallel to `doc.attrs[attrs_start_idx..]`. It is tracked only during
+    // parsing and is not stored in the svgtree `Attribute`, which is part of
+    // the public (and proc-macro tokenized) svgtree data.
+    // XML presentation attributes are never important.
+    let mut attrs_important: Vec<bool> = vec![false; doc.attrs.len() - attrs_start_idx];
+
+    let mut insert_attribute = |aid, value: &str, important: bool| {
         // Check that attribute already exists.
         let idx = doc.attrs[attrs_start_idx..]
             .iter_mut()
@@ -287,52 +341,79 @@ pub(crate) fn parse_svg_element<'input>(
         // Check that attribute was actually added, because it could be skipped.
         if added {
             if let Some(idx) = idx {
-                // Swap the last attribute with an existing one.
                 let last_idx = doc.attrs.len() - 1;
-                doc.attrs.swap(attrs_start_idx + idx, last_idx);
+                let existing_idx = attrs_start_idx + idx;
+
+                // See https://developer.mozilla.org/en-US/docs/Web/CSS/important
+                // When a declaration is important, the order of precedence is reversed.
+                // Declarations marked as important in the user-agent style sheets override
+                // all important declarations in the user style sheets. Similarly, all important
+                // declarations in the user style sheets override all important declarations in the
+                // author's style sheets. Finally, all important declarations take precedence over
+                // all animations.
+                //
+                // Which means:
+                // 1) Existing is not important, new is not important -> swap
+                // 2) Existing is important, new is not important -> don't swap
+                // 3) Existing is not important, new is important -> swap
+                // 4) Existing is important, new is important -> don't swap (since the order
+                // is reversed, so existing important attributes take precedence over new
+                // important attributes)
+                let has_precedence = !attrs_important[idx];
+
+                if has_precedence {
+                    doc.attrs.swap(existing_idx, last_idx);
+                    attrs_important[idx] = important;
+                }
+
                 // Remove last.
                 doc.attrs.pop();
+            } else {
+                attrs_important.push(important);
             }
         }
     };
 
     let mut write_declaration = |declaration: &Declaration| {
         // TODO: perform XML attribute normalization
+        let imp = declaration.important;
+        let val = declaration.value;
+
         if declaration.name == "marker" {
-            insert_attribute(AId::MarkerStart, declaration.value);
-            insert_attribute(AId::MarkerMid, declaration.value);
-            insert_attribute(AId::MarkerEnd, declaration.value);
+            insert_attribute(AId::MarkerStart, val, imp);
+            insert_attribute(AId::MarkerMid, val, imp);
+            insert_attribute(AId::MarkerEnd, val, imp);
         } else if declaration.name == "font" {
-            if let Ok(shorthand) = FontShorthand::from_str(declaration.value) {
+            if let Ok(shorthand) = FontShorthand::from_str(val) {
                 // First we need to reset all values to their default.
-                insert_attribute(AId::FontStyle, "normal");
-                insert_attribute(AId::FontVariant, "normal");
-                insert_attribute(AId::FontWeight, "normal");
-                insert_attribute(AId::FontStretch, "normal");
-                insert_attribute(AId::LineHeight, "normal");
-                insert_attribute(AId::FontSizeAdjust, "none");
-                insert_attribute(AId::FontKerning, "auto");
-                insert_attribute(AId::FontVariantCaps, "normal");
-                insert_attribute(AId::FontVariantLigatures, "normal");
-                insert_attribute(AId::FontVariantNumeric, "normal");
-                insert_attribute(AId::FontVariantEastAsian, "normal");
-                insert_attribute(AId::FontVariantPosition, "normal");
+                insert_attribute(AId::FontStyle, "normal", imp);
+                insert_attribute(AId::FontVariant, "normal", imp);
+                insert_attribute(AId::FontWeight, "normal", imp);
+                insert_attribute(AId::FontStretch, "normal", imp);
+                insert_attribute(AId::LineHeight, "normal", imp);
+                insert_attribute(AId::FontSizeAdjust, "none", imp);
+                insert_attribute(AId::FontKerning, "auto", imp);
+                insert_attribute(AId::FontVariantCaps, "normal", imp);
+                insert_attribute(AId::FontVariantLigatures, "normal", imp);
+                insert_attribute(AId::FontVariantNumeric, "normal", imp);
+                insert_attribute(AId::FontVariantEastAsian, "normal", imp);
+                insert_attribute(AId::FontVariantPosition, "normal", imp);
 
                 // Then, we set the properties that have been declared.
                 shorthand
                     .font_stretch
-                    .map(|s| insert_attribute(AId::FontStretch, s));
+                    .map(|s| insert_attribute(AId::FontStretch, s, imp));
                 shorthand
                     .font_weight
-                    .map(|s| insert_attribute(AId::FontWeight, s));
+                    .map(|s| insert_attribute(AId::FontWeight, s, imp));
                 shorthand
                     .font_variant
-                    .map(|s| insert_attribute(AId::FontVariant, s));
+                    .map(|s| insert_attribute(AId::FontVariant, s, imp));
                 shorthand
                     .font_style
-                    .map(|s| insert_attribute(AId::FontStyle, s));
-                insert_attribute(AId::FontSize, shorthand.font_size);
-                insert_attribute(AId::FontFamily, shorthand.font_family);
+                    .map(|s| insert_attribute(AId::FontStyle, s, imp));
+                insert_attribute(AId::FontSize, shorthand.font_size, imp);
+                insert_attribute(AId::FontFamily, shorthand.font_family, imp);
             } else {
                 log::warn!(
                     "Failed to parse {} value: '{}'",
@@ -343,7 +424,7 @@ pub(crate) fn parse_svg_element<'input>(
         } else if let Some(aid) = AId::from_str(declaration.name) {
             // Parse only the presentation attributes.
             if aid.is_presentation() {
-                insert_attribute(aid, declaration.value);
+                insert_attribute(aid, val, imp);
             }
         }
     };
@@ -507,9 +588,19 @@ fn resolve_href<'a, 'input: 'a>(
     node: roxmltree::Node<'a, 'input>,
     id_map: &HashMap<&str, roxmltree::Node<'a, 'input>>,
 ) -> Option<roxmltree::Node<'a, 'input>> {
+    // See the comment in `parse_svg_element` about `href` precedence.
+    //
+    // Note: `roxmltree::Node::attribute("href")` matches by local name only and
+    // would return whichever `href`/`xlink:href` comes first, so we have to
+    // filter by namespace explicitly.
     let link_value = node
-        .attribute((XLINK_NS, "href"))
-        .or_else(|| node.attribute("href"))?;
+        .attributes()
+        .find(|a| a.name() == "href" && a.namespace().is_none())
+        .or_else(|| {
+            node.attributes()
+                .find(|a| a.name() == "href" && a.namespace() == Some(XLINK_NS))
+        })
+        .map(|a| a.value())?;
 
     let link_id = svgrtypes::IRI::from_str(link_value).ok()?.0;
 
@@ -594,8 +685,17 @@ fn parse_svg_use_element<'input>(
     )
 }
 
-fn resolve_css<'a>(xml: &'a roxmltree::Document<'a>) -> simplecss::StyleSheet<'a> {
+fn resolve_css<'a>(
+    xml: &'a roxmltree::Document<'a>,
+    style_sheet: Option<&'a str>,
+) -> simplecss::StyleSheet<'a> {
     let mut sheet = simplecss::StyleSheet::new();
+
+    // Injected style sheets do not override internal ones (we mimic the logic of rsvg-convert),
+    // so we need to parse it first.
+    if let Some(style_sheet) = style_sheet {
+        sheet.parse_more(style_sheet);
+    }
 
     for node in xml.descendants().filter(|n| n.has_tag_name("style")) {
         match node.attribute("type") {

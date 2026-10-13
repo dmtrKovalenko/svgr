@@ -62,9 +62,15 @@ fn process() -> Result<(), String> {
     })?;
 
     if svg_data.starts_with(&[0x1f, 0x8b]) {
-        svg_data = timed(args.perf, "SVGZ Decoding", || {
-            usvgr::decompress_svgz(&svg_data).map_err(|e| e.to_string())
-        })?;
+        #[cfg(feature = "svgz")]
+        {
+            svg_data = timed(args.perf, "SVGZ Decoding", || {
+                usvgr::decompress_svgz(&svg_data).map_err(|e| e.to_string())
+            })?;
+        }
+
+        #[cfg(not(feature = "svgz"))]
+        return Err(usvgr::Error::SvgzFeatureNotEnabled.to_string());
     };
 
     let svg_string = std::str::from_utf8(&svg_data)
@@ -560,6 +566,7 @@ fn parse_args() -> Result<Args, String> {
         default_size,
         image_data: None,
         sub_svg_data: None,
+        ..usvgr::Options::default()
     };
 
     Ok(Args {
@@ -669,17 +676,16 @@ fn render_svg(args: &Args, tree: &usvgr::Tree) -> Result<tiny_skia::Pixmap, Stri
             None => return Err(format!("SVG doesn't have '{}' ID", id)),
         };
 
-        let bbox = node
-            .abs_layer_bounding_box()
-            .ok_or_else(|| "node has zero size".to_string())?;
+        let bbox = node.abs_layer_bounding_box().ok_or("node has zero size")?;
 
         let size = args
             .fit_to
             .fit_to_size(bbox.size().to_int_size())
-            .ok_or_else(|| "target size is zero".to_string())?;
+            .ok_or("target size is zero")?;
 
-        // Unwrap is safe, because `size` is already valid.
-        let mut pixmap = tiny_skia::Pixmap::new(size.width(), size.height()).unwrap();
+        // Pixmap's width is limited by i32::MAX/4, we handle the creation error.
+        let mut pixmap =
+            tiny_skia::Pixmap::new(size.width(), size.height()).ok_or("cannot create pixmap")?;
 
         if !args.export_area_page {
             if let Some(background) = args.background {
@@ -707,10 +713,11 @@ fn render_svg(args: &Args, tree: &usvgr::Tree) -> Result<tiny_skia::Pixmap, Stri
             let size = args
                 .fit_to
                 .fit_to_size(tree.size().to_int_size())
-                .ok_or_else(|| "target size is zero".to_string())?;
+                .ok_or("target size is zero")?;
 
-            // Unwrap is safe, because `size` is already valid.
-            let mut page_pixmap = tiny_skia::Pixmap::new(size.width(), size.height()).unwrap();
+            // Pixmap's width is limited by i32::MAX/4, we handle the creation error.
+            let mut page_pixmap = tiny_skia::Pixmap::new(size.width(), size.height())
+                .ok_or("cannot create pixmap")?;
 
             if let Some(background) = args.background {
                 page_pixmap.fill(svg_to_skia_color(background));
@@ -732,10 +739,11 @@ fn render_svg(args: &Args, tree: &usvgr::Tree) -> Result<tiny_skia::Pixmap, Stri
         let size = args
             .fit_to
             .fit_to_size(tree.size().to_int_size())
-            .ok_or_else(|| "target size is zero".to_string())?;
+            .ok_or("target size is zero")?;
 
-        // Unwrap is safe, because `size` is already valid.
-        let mut pixmap = tiny_skia::Pixmap::new(size.width(), size.height()).unwrap();
+        // Pixmap's width is limited by i32::MAX/4, we handle the creation error.
+        let mut pixmap =
+            tiny_skia::Pixmap::new(size.width(), size.height()).ok_or("cannot create pixmap")?;
 
         if let Some(background) = args.background {
             pixmap.fill(svg_to_skia_color(background));
