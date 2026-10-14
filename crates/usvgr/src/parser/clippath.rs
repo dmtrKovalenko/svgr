@@ -44,7 +44,11 @@ pub(crate) fn convert(
         let object_bbox = match object_bbox {
             Some(v) => v,
             None => {
-                log::warn!("Clipping of zero-sized shapes is not allowed.");
+                log::warn!(
+                    "Clip path '{}' cannot be applied to a zero-sized element \
+                     (it uses objectBoundingBox units). Skipped.",
+                    node.element_id()
+                );
                 return None;
             }
         };

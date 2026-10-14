@@ -113,7 +113,11 @@ pub(crate) fn convert(
         let object_bbox = match object_bbox {
             Some(v) => v,
             None => {
-                log::warn!("Masking of zero-sized shapes is not allowed.");
+                log::warn!(
+                    "Mask '{}' cannot be applied to a zero-sized element \
+                     (its content uses objectBoundingBox units). Skipped.",
+                    node.element_id()
+                );
                 return None;
             }
         };
