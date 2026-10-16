@@ -49,7 +49,7 @@ png = { version = "0.17", optional = true } # color font bitmap glyphs
 # fframes 
 self-rust-tokenize = { version = "0.3.4", optional = true }
 quote = { version = "1.0.35", optional = true }
-lru = "0.14.0"
+lru = "0.18.5"
 ahash = "0.8.11"
 pico-args = { version = "0.5", features = ["eq-separator"] }
 smallvec = "1.15.1"
