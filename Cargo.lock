@@ -1316,7 +1316,7 @@ dependencies = [
 
 [[package]]
 name = "svgr"
-version = "0.50.1"
+version = "0.50.2"
 dependencies = [
  "bytemuck",
  "criterion",
@@ -1335,7 +1335,7 @@ dependencies = [
 
 [[package]]
 name = "svgr-capi"
-version = "0.50.1"
+version = "0.50.2"
 dependencies = [
  "log",
  "svgr",
@@ -1343,7 +1343,7 @@ dependencies = [
 
 [[package]]
 name = "svgrtypes"
-version = "0.50.1"
+version = "0.50.2"
 dependencies = [
  "kurbo",
  "proc-macro2",
@@ -1562,7 +1562,7 @@ checksum = "b1d386ff53b415b7fe27b50bb44679e2cc4660272694b7b6f3326d8480823a94"
 
 [[package]]
 name = "usvgr"
-version = "0.50.1"
+version = "0.50.2"
 dependencies = [
  "ahash",
  "base64",
