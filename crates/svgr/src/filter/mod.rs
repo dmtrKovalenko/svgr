@@ -1081,12 +1081,16 @@ fn apply_displacement_map(
     pixmap_pool: &crate::cache::PixmapPool,
 ) -> Result<Image, Error> {
     let pixmap1 = input1.into_color_space(cs)?.take()?;
-    let pixmap2 = input2.into_color_space(cs)?.take()?;
+    let mut pixmap2 = input2.into_color_space(cs)?.take()?;
+
+    // The displacement map must be read using non-premultiplied color values.
+    demultiply_alpha(pixmap2.data_mut().as_rgba_mut());
 
     let mut pixmap = pixmap_pool
         .take_or_allocate(region.width(), region.height())
         .ok_or(Error::NoResults)?;
 
+    // `scale` is in user units, convert it into pixels.
     let (sx, sy) = match scale_coordinates(fe.scale(), fe.scale(), ts) {
         Some(v) => v,
         None => return Ok(Image::from_image(pixmap1, cs)),

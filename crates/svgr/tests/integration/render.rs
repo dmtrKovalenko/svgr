@@ -148,7 +148,9 @@ use crate::render;
 #[test] fn filters_feDiffuseLighting_surfaceScale_eq_0() { assert_eq!(render("tests/filters/feDiffuseLighting/surfaceScale=0"), 0); }
 #[test] fn filters_feDiffuseLighting_surfaceScale_eq_1_33() { assert_eq!(render("tests/filters/feDiffuseLighting/surfaceScale=1.33"), 0); }
 #[test] fn filters_feDiffuseLighting_surfaceScale_eq_5() { assert_eq!(render("tests/filters/feDiffuseLighting/surfaceScale=5"), 0); }
+#[test] fn filters_feDisplacementMap_semi_transparent_map() { assert_eq!(render("tests/filters/feDisplacementMap/semi-transparent-map"), 0); }
 #[test] fn filters_feDisplacementMap_simple_case() { assert_eq!(render("tests/filters/feDisplacementMap/simple-case"), 0); }
+#[test] fn filters_feDisplacementMap_uniform_map() { assert_eq!(render("tests/filters/feDisplacementMap/uniform-map"), 0); }
 #[test] fn filters_feDistantLight_default_attributes() { assert_eq!(render("tests/filters/feDistantLight/default-attributes"), 0); }
 #[test] fn filters_feDistantLight_negative_azimuth_and_elevation() { assert_eq!(render("tests/filters/feDistantLight/negative-azimuth-and-elevation"), 0); }
 #[test] fn filters_feDistantLight_only_azimuth() { assert_eq!(render("tests/filters/feDistantLight/only-azimuth"), 0); }

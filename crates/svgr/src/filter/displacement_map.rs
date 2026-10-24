@@ -10,15 +10,16 @@ use usvgr::filter::{ColorChannel, DisplacementMap};
 /// - `map` pixels should have a **unpremultiplied alpha**.
 /// - `src` pixels can have any alpha method.
 ///
-/// `sx` and `sy` indicate canvas scale.
+/// `scale_x` and `scale_y` are the `scale` attribute already converted
+/// into the canvas coordinate system, i.e. the maximum displacement in pixels.
 ///
 /// # Panics
 ///
 /// When `src`, `map` and `dest` have different sizes.
 pub fn apply(
     fe: &DisplacementMap,
-    sx: f32,
-    sy: f32,
+    scale_x: f32,
+    scale_y: f32,
     src: ImageRef,
     map: ImageRef,
     dest: ImageRefMut,
@@ -45,8 +46,8 @@ pub fn apply(
 
         let dx = calc_offset(fe.x_channel_selector());
         let dy = calc_offset(fe.y_channel_selector());
-        let ox = (x as f32 + dx * sx * fe.scale()).round() as i32;
-        let oy = (y as f32 + dy * sy * fe.scale()).round() as i32;
+        let ox = (x as f32 + dx * scale_x).round() as i32;
+        let oy = (y as f32 + dy * scale_y).round() as i32;
 
         // TODO: we should use some kind of anti-aliasing when offset is on a pixel border
 
