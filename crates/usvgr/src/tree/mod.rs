@@ -1173,12 +1173,24 @@ pub struct Group {
 
 impl std::hash::Hash for Group {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.hash_impl(state, false);
+    }
+}
+
+impl Group {
+    /// The hash is the key of the group's rendered layer. The group's own opacity and
+    /// blend mode apply when that layer is drawn, so they are left out. Those of a nested
+    /// group are part of the layer's pixels and are hashed.
+    fn hash_impl<H: std::hash::Hasher>(&self, state: &mut H, nested: bool) {
+        use std::hash::Hash;
+
         self.id.hash(state);
         self.transform.custom_hash(state);
         self.abs_transform.custom_hash(state);
-        // do not hash opacity and blend_mode it is used after caching
-        // self.opacity.hash(state);
-        // self.blend_mode.hash(state);
+        if nested {
+            self.opacity.hash(state);
+            (self.blend_mode as u8).hash(state);
+        }
         self.isolate.hash(state);
         self.clip_path.hash(state);
         self.mask.hash(state);
@@ -1189,7 +1201,17 @@ impl std::hash::Hash for Group {
         self.abs_stroke_bounding_box.custom_hash(state);
         self.layer_bounding_box.custom_hash(state);
         self.abs_layer_bounding_box.custom_hash(state);
-        self.children.hash(state);
+
+        self.children.len().hash(state);
+        for child in &self.children {
+            match child {
+                Node::Group(group) => {
+                    std::mem::discriminant(child).hash(state);
+                    group.hash_impl(state, true);
+                }
+                _ => child.hash(state),
+            }
+        }
     }
 }
 

@@ -611,4 +611,57 @@ mod tests {
             }
         }
     }
+
+    // https://github.com/dmtrKovalenko/fframes/issues/264
+    #[test]
+    fn nested_group_opacity_and_blend_mode_change_cached_layer() {
+        fn render(svg: &str, cache: &mut crate::SvgrCache) -> tiny_skia::Pixmap {
+            #[cfg(feature = "text")]
+            let fontdb = usvgr::fontdb::Database::new();
+            let tree = usvgr::Tree::from_str(
+                svg,
+                &usvgr::Options::default(),
+                #[cfg(feature = "text")]
+                &fontdb,
+            )
+            .unwrap();
+
+            let mut pixmap = tiny_skia::Pixmap::new(40, 40).unwrap();
+            pixmap.fill(tiny_skia::Color::WHITE);
+            let ctx = super::Context::new_from_pixmap(&pixmap);
+            crate::render(
+                &tree,
+                tiny_skia::Transform::identity(),
+                &mut pixmap.as_mut(),
+                cache,
+                &crate::PixmapPool::new(),
+                &ctx,
+            );
+            pixmap
+        }
+
+        let frame = |inner: &str| {
+            format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40">
+                    <g transform="translate(10 10)" opacity="0.9">
+                        <rect width="20" height="20" fill="red"/>
+                        <g {inner}><rect width="20" height="20" fill="blue"/></g>
+                    </g>
+                </svg>"#
+            )
+        };
+
+        // Frames of one video share a cache. Each must look like it does without one.
+        let mut cache = crate::SvgrCache::new(10);
+        for inner in [
+            r#"opacity="0.75""#,
+            r#"opacity="0.25""#,
+            r#"opacity="0.25" style="mix-blend-mode:multiply""#,
+        ] {
+            let svg = frame(inner);
+            let expected = render(&svg, &mut crate::SvgrCache::none());
+            let cached = render(&svg, &mut cache);
+            assert!(cached.data() == expected.data(), "stale layer for {inner}");
+        }
+    }
 }
