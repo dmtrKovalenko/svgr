@@ -308,7 +308,9 @@ impl UsvgrTextShapeCache {
 /// The text is shaped as given, as a single line. Whitespace is not processed the way the
 /// parser processes the content of a `<text>` element, and only the text up to the first
 /// paragraph separator, such as a line break, is measured. To measure what a `<text>`
-/// element renders, replace tabs and line breaks with spaces first.
+/// element renders, apply that element's whitespace rules first. With the default
+/// `xml:space`, that means replacing tabs and line breaks with spaces, collapsing runs of
+/// spaces into one, and trimming leading and trailing spaces.
 ///
 /// With a `cache`, the shaped glyphs are kept, and a later layout of the same text with a
 /// [`Cache`](crate::Cache) that holds the same shape cache reuses them.
