@@ -305,6 +305,11 @@ impl UsvgrTextShapeCache {
 /// optical sizing and fallback fonts) and nothing else. No tree is built and no glyph is
 /// outlined.
 ///
+/// The text is shaped as given, as a single line. Whitespace is not processed the way the
+/// parser processes the content of a `<text>` element, and only the text up to the first
+/// paragraph separator, such as a line break, is measured. To measure what a `<text>`
+/// element renders, replace tabs and line breaks with spaces first.
+///
 /// With a `cache`, the shaped glyphs are kept, and a later layout of the same text with a
 /// [`Cache`](crate::Cache) that holds the same shape cache reuses them.
 ///
