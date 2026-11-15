@@ -153,6 +153,62 @@ pub struct Font {
 }
 
 impl Font {
+    /// Creates a font the way a `<text>` element with these properties gets one.
+    ///
+    /// The weight, stretch and style are mapped to the `wght`, `wdth`, `ital` and `slnt`
+    /// variation axes unless `variations` already sets them, so a variable font follows
+    /// `font-weight` and friends.
+    pub fn new(
+        families: Vec<FontFamily>,
+        style: FontStyle,
+        stretch: FontStretch,
+        weight: u16,
+        mut variations: Vec<FontVariation>,
+    ) -> Self {
+        let has =
+            |variations: &[FontVariation], tag: &[u8; 4]| variations.iter().any(|v| &v.tag == tag);
+
+        if !has(&variations, b"wght") {
+            variations.push(FontVariation::new(*b"wght", weight as f32));
+        }
+
+        // CSS font-stretch percentages: ultra-condensed=50%, condensed=75%, normal=100%,
+        // expanded=125%, ultra-expanded=200%
+        if !has(&variations, b"wdth") {
+            let wdth = match stretch {
+                FontStretch::UltraCondensed => 50.0,
+                FontStretch::ExtraCondensed => 62.5,
+                FontStretch::Condensed => 75.0,
+                FontStretch::SemiCondensed => 87.5,
+                FontStretch::Normal => 100.0,
+                FontStretch::SemiExpanded => 112.5,
+                FontStretch::Expanded => 125.0,
+                FontStretch::ExtraExpanded => 150.0,
+                FontStretch::UltraExpanded => 200.0,
+            };
+            if wdth != 100.0 {
+                variations.push(FontVariation::new(*b"wdth", wdth));
+            }
+        }
+
+        if !has(&variations, b"ital") && style == FontStyle::Italic {
+            variations.push(FontVariation::new(*b"ital", 1.0));
+        }
+
+        // Default oblique angle is typically 12-14 degrees
+        if !has(&variations, b"slnt") && style == FontStyle::Oblique {
+            variations.push(FontVariation::new(*b"slnt", -12.0));
+        }
+
+        Font {
+            families,
+            style,
+            stretch,
+            weight,
+            variations,
+        }
+    }
+
     /// A list of family names.
     ///
     /// Never empty. Uses `usvgr::Options::font_family` as fallback.
