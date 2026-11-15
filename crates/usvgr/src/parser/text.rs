@@ -150,6 +150,7 @@ pub(crate) fn convert(
         &state.opt.font_resolver,
         state.fontdb,
         cache.usvgr_text_cache.as_ref(),
+        cache.usvgr_shape_cache.as_ref(),
         &mut cache.glyph_cache,
     ) {
         parent.children.push(Node::Text(Box::new(text)));
@@ -405,49 +406,7 @@ fn convert_font(node: SvgNode, state: &converter::State) -> Font {
     let style: FontStyle = node.find_attribute(AId::FontStyle).unwrap_or_default();
     let stretch = conv_font_stretch(node);
     let weight = resolve_font_weight(node);
-    let mut variations = parse_font_variation_settings(node);
-
-    // Auto-map standard font properties to variation axes if not explicitly set.
-    // This allows variable fonts to work with regular font-weight/font-stretch properties.
-    let has_wght = variations.iter().any(|v| &v.tag == b"wght");
-    let has_wdth = variations.iter().any(|v| &v.tag == b"wdth");
-    let has_ital = variations.iter().any(|v| &v.tag == b"ital");
-    let has_slnt = variations.iter().any(|v| &v.tag == b"slnt");
-
-    // Map font-weight to wght axis (if not already set)
-    if !has_wght {
-        variations.push(FontVariation::new(*b"wght", weight as f32));
-    }
-
-    // Map font-stretch to wdth axis (if not already set)
-    // CSS font-stretch percentages: ultra-condensed=50%, condensed=75%, normal=100%, expanded=125%, ultra-expanded=200%
-    if !has_wdth {
-        let wdth = match stretch {
-            FontStretch::UltraCondensed => 50.0,
-            FontStretch::ExtraCondensed => 62.5,
-            FontStretch::Condensed => 75.0,
-            FontStretch::SemiCondensed => 87.5,
-            FontStretch::Normal => 100.0,
-            FontStretch::SemiExpanded => 112.5,
-            FontStretch::Expanded => 125.0,
-            FontStretch::ExtraExpanded => 150.0,
-            FontStretch::UltraExpanded => 200.0,
-        };
-        if wdth != 100.0 {
-            variations.push(FontVariation::new(*b"wdth", wdth));
-        }
-    }
-
-    // Map font-style: italic to ital axis (if not already set)
-    if !has_ital && style == FontStyle::Italic {
-        variations.push(FontVariation::new(*b"ital", 1.0));
-    }
-
-    // Map font-style: oblique to slnt axis (if not already set)
-    // Default oblique angle is typically 12-14 degrees
-    if !has_slnt && style == FontStyle::Oblique {
-        variations.push(FontVariation::new(*b"slnt", -12.0));
-    }
+    let variations = parse_font_variation_settings(node);
 
     let font_families = if let Some(n) = node.ancestors().find(|n| n.has_attribute(AId::FontFamily))
     {
@@ -472,13 +431,9 @@ fn convert_font(node: SvgNode, state: &converter::State) -> Font {
         families.push(FontFamily::Named(state.opt.font_family.clone()))
     }
 
-    Font {
-        families,
-        style,
-        stretch,
-        weight,
-        variations,
-    }
+    // Maps the standard font properties to variation axes that are not set explicitly,
+    // so variable fonts work with the regular font-weight/font-stretch properties.
+    Font::new(families, style, stretch, weight, variations)
 }
 
 /// Parses the `font-variation-settings` CSS property.

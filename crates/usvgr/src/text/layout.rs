@@ -18,7 +18,8 @@ use crate::tree::{BBox, IsValidLength};
 use crate::{
     AlignmentBaseline, ApproxZeroUlps, BaselineShift, DominantBaseline, Fill, FillRule, Font,
     FontResolver, LengthAdjust, PaintOrder, Path, ShapeRendering, Stroke, Text, TextAnchor,
-    TextChunk, TextDecorationStyle, TextFlow, TextPath, TextSpan, Visibility, WritingMode,
+    TextChunk, TextDecorationStyle, TextFlow, TextPath, TextSpan, UsvgrTextShapeCache, Visibility,
+    WritingMode,
 };
 
 /// A glyph that has already been positioned correctly.
@@ -200,6 +201,7 @@ pub(crate) fn layout_text(
     text_node: &Text,
     resolver: &FontResolver,
     fontdb: &fontdb::Database,
+    shape_cache: Option<&UsvgrTextShapeCache>,
 ) -> Option<(Vec<Span>, NonZeroRect)> {
     let mut fonts_cache: FontsCache = HashMap::new();
 
@@ -226,7 +228,7 @@ pub(crate) fn layout_text(
             TextFlow::Path(_) => (0.0, 0.0),
         };
 
-        let mut clusters = process_chunk(chunk, &fonts_cache, resolver, fontdb);
+        let mut clusters = process_chunk(chunk, &fonts_cache, resolver, fontdb, shape_cache);
         if clusters.is_empty() {
             char_offset += chunk.text.chars().count();
             continue;
@@ -862,6 +864,7 @@ fn process_chunk(
     fonts_cache: &FontsCache,
     resolver: &FontResolver,
     fontdb: &fontdb::Database,
+    shape_cache: Option<&UsvgrTextShapeCache>,
 ) -> Vec<GlyphCluster> {
     // The way this function works is a bit tricky.
     //
@@ -899,16 +902,20 @@ fn process_chunk(
     // span glyphs.
     let mut positions = HashSet::new();
 
-    let mut glyphs = Vec::new();
+    // The first span's glyphs stay shared with the shape cache. They are copied only when
+    // another span has to overwrite some of them.
+    let mut shaped: Option<Arc<[Glyph]>> = None;
+    let mut glyphs: Vec<Glyph> = Vec::new();
     for span in &chunk.spans {
         let font = match fonts_cache.get(&span.font) {
             Some(v) => v.clone(),
             None => continue,
         };
 
-        let tmp_glyphs = shape_text(
+        let Some(tmp_glyphs) = shape_text(
             &chunk.text,
-            font,
+            font.id,
+            || Some(font.clone()),
             span.small_caps,
             span.apply_kerning,
             &span.font.variations,
@@ -916,18 +923,26 @@ fn process_chunk(
             span.font_optical_sizing,
             resolver,
             fontdb,
-        );
+            shape_cache,
+        ) else {
+            continue;
+        };
 
         // Do nothing with the first run.
         if glyphs.is_empty() {
-            glyphs = tmp_glyphs;
-            continue;
+            match &shaped {
+                Some(first) if !first.is_empty() => glyphs = first.to_vec(),
+                _ => {
+                    shaped = Some(tmp_glyphs);
+                    continue;
+                }
+            }
         }
 
         positions.clear();
 
         // Overwrite span's glyphs.
-        let mut iter = tmp_glyphs.into_iter();
+        let mut iter = tmp_glyphs.iter().cloned();
         while let Some(new_glyph) = iter.next() {
             if !span_contains(span, new_glyph.byte_idx) {
                 continue;
@@ -964,9 +979,15 @@ fn process_chunk(
         }
     }
 
+    let glyphs: &[Glyph] = if glyphs.is_empty() {
+        shaped.as_deref().unwrap_or_default()
+    } else {
+        &glyphs
+    };
+
     // Convert glyphs to clusters.
     let mut clusters = Vec::new();
-    for (range, byte_idx) in GlyphClusters::new(&glyphs) {
+    for (range, byte_idx) in GlyphClusters::new(glyphs) {
         if let Some(span) = chunk_span_at(chunk, byte_idx) {
             clusters.push(form_glyph_clusters(
                 &glyphs[range],
@@ -1292,8 +1313,60 @@ impl DatabaseExt for Database {
     }
 }
 
-/// Text shaping with font fallback.
+/// Text shaping with font fallback, read from and written to `cache` when there is one.
+///
+/// `load_font` is called only when the text has to be shaped. Returns `None` when it
+/// yields no font.
 pub(crate) fn shape_text(
+    text: &str,
+    font_id: ID,
+    load_font: impl FnOnce() -> Option<Arc<ResolvedFont>>,
+    small_caps: bool,
+    apply_kerning: bool,
+    variations: &[crate::FontVariation],
+    font_size: f32,
+    font_optical_sizing: crate::FontOpticalSizing,
+    resolver: &FontResolver,
+    fontdb: &fontdb::Database,
+    cache: Option<&UsvgrTextShapeCache>,
+) -> Option<Arc<[Glyph]>> {
+    let shape = || {
+        Some(Arc::from(shape_text_with_fallback(
+            text,
+            load_font()?,
+            small_caps,
+            apply_kerning,
+            variations,
+            font_size,
+            font_optical_sizing,
+            resolver,
+            fontdb,
+        )))
+    };
+
+    let Some(cache) = cache else {
+        return shape();
+    };
+
+    let key = cache.key((
+        text,
+        font_id,
+        small_caps,
+        apply_kerning,
+        variations,
+        font_size.to_bits(),
+        font_optical_sizing,
+    ));
+    if let Some(glyphs) = cache.get(key) {
+        return Some(glyphs);
+    }
+
+    let glyphs: Arc<[Glyph]> = shape()?;
+    cache.put(key, glyphs.clone());
+    Some(glyphs)
+}
+
+fn shape_text_with_fallback(
     text: &str,
     font: Arc<ResolvedFont>,
     small_caps: bool,

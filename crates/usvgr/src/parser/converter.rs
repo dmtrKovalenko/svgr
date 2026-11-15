@@ -10,7 +10,7 @@ use svgrtypes::{Length, LengthUnit as Unit, PaintOrderKind, TransformOrigin};
 use tiny_skia_path::Transform;
 
 #[cfg(feature = "text")]
-use crate::text::{GlyphCache, UsvgrTextOutlineCache};
+use crate::text::{GlyphCache, UsvgrTextOutlineCache, UsvgrTextShapeCache};
 
 use super::svgtree::{self, AId, EId, FromValue, SvgNode};
 use super::units::{self, convert_length};
@@ -44,6 +44,10 @@ pub struct State<'a> {
 pub struct Cache {
     #[cfg(feature = "text")]
     pub usvgr_text_cache: Option<UsvgrTextOutlineCache>,
+    /// Shaped glyphs of text, shared with [`text_advance`](crate::text_advance) when it is
+    /// given a clone of the same cache.
+    #[cfg(feature = "text")]
+    pub usvgr_shape_cache: Option<UsvgrTextShapeCache>,
     /// Resolved glyphs of the current conversion. Cleared by `clear`.
     #[cfg(feature = "text")]
     pub(crate) glyph_cache: GlyphCache,
@@ -93,6 +97,21 @@ impl Cache {
     pub fn new_with_text_cache(text_cache_capacity: usize) -> Self {
         Self {
             usvgr_text_cache: UsvgrTextOutlineCache::new(text_cache_capacity),
+            ..Default::default()
+        }
+    }
+
+    /// Creates a new cache with an external text outline cache that shapes text through
+    /// `shape_cache`. Give [`text_advance`](crate::text_advance) a clone of the same shape
+    /// cache and text that was measured is not shaped again when it is converted.
+    #[cfg(feature = "text")]
+    pub fn new_with_text_caches(
+        text_cache_capacity: usize,
+        shape_cache: UsvgrTextShapeCache,
+    ) -> Self {
+        Self {
+            usvgr_text_cache: UsvgrTextOutlineCache::new(text_cache_capacity),
+            usvgr_shape_cache: Some(shape_cache),
             ..Default::default()
         }
     }
